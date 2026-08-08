@@ -18,6 +18,9 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Initialize one shared I2C bus for an SSD1306 display and an SHT30 sensor.
 - Initialize four active-low GPIO button inputs with non-blocking debounce.
 - Provide thin wrappers around Adafruit SSD1306 and Sensirion arduino-sht.
+- Connect to a configured Wi-Fi network in station mode with non-blocking retry.
+- Serve a responsive Web Panel with live RPM and fan duty control.
+- Expose status and fan-control HTTP API entrypoints.
 
 Display content, button actions, and temperature/humidity sampling are not yet
 implemented.
@@ -56,15 +59,15 @@ Do not wire a switch so that pressing it directly shorts VCC to ground.
 The Adafruit GFX dependency is normally installed automatically with Adafruit
 SSD1306. The display and sensor libraries are not vendored in this repository.
 
-## Planned Wi-Fi Web Panel
+## Wi-Fi Web Panel
 
-The first application feature will be a small responsive Web Panel served
-directly by the ESP32. It will use the ESP32 Arduino core's built-in `WiFi` and
+The responsive Web Panel is served directly by the ESP32. It uses the ESP32
+Arduino core's built-in `WiFi` and
 `WebServer` libraries, without an asynchronous server dependency.
 
 ### Network behavior
 
-- Add hard-coded `Config::Wifi::SSID` and `Config::Wifi::PASSWORD` strings.
+- Use hard-coded `Config::Wifi::SSID` and `Config::Wifi::PASSWORD` strings.
 - Use station mode only (`WIFI_STA`).
 - Never create a fallback access point.
 - Keep fan control, TACH sampling, serial handling, and button debounce running
@@ -78,8 +81,7 @@ published if this repository is later pushed to a remote host.
 
 ### Web interface
 
-The Web Panel will be compiled into the firmware and served at `/`. It will
-contain:
+The Web Panel is compiled into the firmware and served at `/`. It contains:
 
 - A current RPM readout refreshed once per second.
 - A numeric spinner with `min=0`, `max=100`, and `step=1`.
@@ -126,21 +128,20 @@ without changing the fan setting.
 Unknown API paths return JSON errors. The Web Panel is intended for a trusted
 local network and does not initially include authentication or TLS.
 
-## Implementation plan
+## Implementation details
 
-1. Extend `Config.h` with Wi-Fi credentials, retry timing, HTTP port, and API
-   polling interval.
-2. Add a non-blocking Wi-Fi station manager that reports connection changes and
-   retries without interrupting fan control.
-3. Add a cached RPM getter to `FanController`; the existing one-second TACH
-   calculation remains the single source of truth.
-4. Add a Web Panel module containing the embedded HTML, CSS, and JavaScript.
-5. Add an HTTP server module for `/`, `/api/status`, and `/api/fan/duty`, with
-   strict input validation and explicit response content types.
-6. Call Wi-Fi and HTTP service methods from the existing non-blocking main loop.
-7. Verify serial control and Web Panel control produce the same fan state.
-8. Test API success and error responses, Wi-Fi loss/reconnection, `millis()`
-   rollover-safe timing, and mobile/desktop page layouts.
+- `WifiStation` owns station-mode connection attempts and rollover-safe retry
+  timing. A failed or lost connection never starts an access point.
+- `FanController::currentRpm()` exposes the most recent completed one-second
+  TACH sample without recounting pulses during an HTTP request.
+- `WebPanel` owns the embedded HTML, CSS, JavaScript, HTTP routes, and strict
+  server-side duty validation.
+- HTTP requests, Wi-Fi state updates, TACH sampling, serial commands, and button
+  debounce all run cooperatively from the non-blocking main loop.
+- Serial and HTTP control call the same `FanController::setDutyPercent()` method
+  and therefore share one applied fan state.
+- The browser starts its next status poll only after the previous request has
+  completed, preventing overlapping requests.
 
 ## Deferred roadmap
 
@@ -153,6 +154,36 @@ These features are intentionally outside the first Web Panel implementation:
 - Assign button roles and change duty in 5% steps, clamped to `[0, 100]`.
 - Coordinate serial, Web Panel, and button updates through one shared fan-state
   interface.
+
+### Optional captive portal fallback
+
+The current firmware remains station-only and never creates an access point.
+A later optional enhancement may provide Wi-Fi provisioning when the configured
+credentials are unavailable:
+
+- After a bounded number or duration of failed station connection attempts,
+  create an open setup access point.
+- Run a catch-all DNS server that redirects client requests to a local Captive
+  Portal.
+- Embed a second, deliberately compact webpage that asks for the target Wi-Fi
+  SSID and password.
+- Validate submitted values without logging or returning the password in HTTP
+  responses.
+- Attempt the supplied credentials while fan control, TACH sampling, and other
+  local firmware work continue to run.
+- Stop the open access point and Captive Portal after a successful station
+  connection.
+
+Before implementation, decide whether submitted credentials survive a reboot
+in ESP32 NVS or remain valid only for the current session, how long the setup
+access point remains available, and how it is named. An open provisioning AP
+exposes submitted credentials as plaintext on its local radio link, so the
+portal should exist only while configuration is necessary.
+
+Two embedded pages will increase flash use and temporary heap pressure. The
+main Web Panel may therefore be simplified, or the two pages may share a small
+common style vocabulary while remaining independently servable. Resource usage
+must be measured on the selected ESP32 target before this fallback is enabled.
 
 ## Source layout
 
@@ -167,6 +198,8 @@ These features are intentionally outside the first Web Panel implementation:
 | `ButtonInputs.*` | Four active-low debounced digital inputs |
 | `OledDisplay.*` | Adafruit SSD1306 wrapper |
 | `Sht30Sensor.*` | Sensirion arduino-sht wrapper |
+| `WifiStation.*` | Non-blocking Wi-Fi station connection and retry |
+| `WebPanel.*` | Embedded responsive UI and HTTP API entrypoints |
 
 ## Build status
 

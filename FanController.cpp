@@ -90,6 +90,11 @@ uint8_t FanController::dutyPercent() const
     return currentDutyPercent_;
 }
 
+float FanController::currentRpm() const
+{
+    return currentRpm_;
+}
+
 void IRAM_ATTR FanController::tachInterrupt()
 {
     if (interruptOwner_ != nullptr) {

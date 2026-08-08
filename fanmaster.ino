@@ -8,6 +8,8 @@
 #include "SerialConsole.h"
 #include "Sht30Sensor.h"
 #include "StatusLed.h"
+#include "WebPanel.h"
+#include "WifiStation.h"
 
 namespace {
 
@@ -18,6 +20,8 @@ Sht30Sensor sht30;
 ButtonInputs buttons;
 SerialConsole console;
 StatusLed statusLed;
+WifiStation wifiStation;
+WebPanel webPanel;
 
 void haltAfterStartupError()
 {
@@ -97,10 +101,15 @@ void setup()
 
     Serial.println();
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
+
+    wifiStation.begin();
+    webPanel.begin(fan, wifiStation);
 }
 
 void loop()
 {
+    wifiStation.update();
+    webPanel.update();
     buttons.update();
     console.update(fan);
 

@@ -10,6 +10,7 @@ public:
     uint32_t takeCompletedRevolutions();
 
     uint8_t dutyPercent() const;
+    float currentRpm() const;
 
 private:
     static void IRAM_ATTR tachInterrupt();

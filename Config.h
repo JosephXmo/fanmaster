@@ -46,6 +46,19 @@ constexpr bool PLOTTER_MODE = true;
 constexpr size_t INPUT_BUFFER_SIZE = 24;
 }  // namespace SerialConsole
 
+namespace Wifi {
+// Replace these two strings before flashing the firmware.
+constexpr char SSID[] = "YOUR_WIFI_SSID";
+constexpr char PASSWORD[] = "YOUR_WIFI_PASSWORD";
+constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
+constexpr uint32_t RETRY_INTERVAL_MS = 10000;
+}  // namespace Wifi
+
+namespace Web {
+constexpr uint16_t HTTP_PORT = 80;
+constexpr uint32_t POLL_INTERVAL_MS = 1000;
+}  // namespace Web
+
 namespace Buttons {
 constexpr size_t COUNT = 4;
 constexpr uint8_t PINS[COUNT] = {
