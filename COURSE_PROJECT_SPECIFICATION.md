@@ -138,7 +138,40 @@ robustness, or user experience.
    - Keep button, serial, and Web Panel changes synchronized through one shared
      fan state.
 
-5. **Optional bonus: Captive Portal Wi-Fi provisioning (6%)**
+5. **Three-point automatic temperature control (weight TBD)**
+   - Provide a Web Panel editor for three temperature setpoints ordered from
+     low to high and three corresponding fan duty percentages also ordered
+     from low to high.
+   - Validate that all temperatures are ordered correctly and that all duty
+     values are integers in the inclusive range `[0, 100]` before applying the
+     profile.
+   - Use piecewise linear interpolation on the ESP32 to calculate the fan duty
+     for temperatures between adjacent setpoints.
+   - Use the lowest configured duty at or below the lowest temperature and the
+     highest configured duty at or above the highest temperature.
+   - Display the active automatic-control state, current temperature, and
+     calculated duty in the Web Panel.
+   - This feature requires, at minimum, correct configuration and operation of
+     a digital temperature/humidity sensor module. A simulated or permanently
+     hard-coded temperature input does not satisfy this prerequisite.
+
+6. **Fixed-RPM PID control (weight TBD)**
+   - Provide a Web Panel mode that accepts a requested fan speed in RPM.
+   - Implement the PID feedback algorithm on the ESP32 using TACH-derived RPM
+     as the process measurement and PWM duty as the control output.
+   - Limit the PID output to the valid fan duty range `[0, 100]`. A requested
+     speed above or below the fan's achievable range must settle at the
+     corresponding maximum or minimum operating speed rather than producing an
+     invalid output.
+   - Update the controller at a documented, stable interval and avoid integral
+     accumulation causing prolonged incorrect output after saturation.
+   - Display requested RPM, measured RPM, applied duty, and controller mode in
+     the Web Panel.
+   - Manual duty control, three-point automatic temperature control, and
+     fixed-RPM control must be mutually exclusive operating modes with a clear
+     transition between them.
+
+7. **Optional bonus: Captive Portal Wi-Fi provisioning (6%)**
    - After a bounded failure period for configured station credentials, create
      an open setup access point.
    - Run a catch-all DNS server that redirects clients to a local Captive
