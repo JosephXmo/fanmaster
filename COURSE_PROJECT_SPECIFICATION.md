@@ -1,4 +1,4 @@
-# Course Project Specification: Fanmaster
+# Course Project Specification
 
 ## Problem Description
 
@@ -123,7 +123,7 @@ robustness, or user experience.
     conditions from the emitted light. This requirement contributes **2%** of the
     course project grade.
 
-3. **Temperature and humidity monitoring (6%)**
+3. **Temperature and humidity monitoring (2%)**
    - Use the Sensirion `arduino-sht` library with an SHT30 sensor.
    - Sample at a sensor-appropriate non-blocking interval.
    - Display temperature and humidity on the OLED.
@@ -138,7 +138,7 @@ robustness, or user experience.
    - Keep button, serial, and Web Panel changes synchronized through one shared
      fan state.
 
-5. **Three-point automatic temperature control (weight TBD)**
+5. **Three-point automatic temperature control (4%)**
    - Provide a Web Panel editor for three temperature setpoints ordered from
      low to high and three corresponding fan duty percentages also ordered
      from low to high.
@@ -155,7 +155,7 @@ robustness, or user experience.
      a digital temperature/humidity sensor module. A simulated or permanently
      hard-coded temperature input does not satisfy this prerequisite.
 
-6. **Fixed-RPM PID control (weight TBD)**
+6. **Fixed-RPM PID control (6%)**
    - Provide a Web Panel mode that accepts a requested fan speed in RPM.
    - Implement the PID feedback algorithm on the ESP32 using TACH-derived RPM
      as the process measurement and PWM duty as the control output.
