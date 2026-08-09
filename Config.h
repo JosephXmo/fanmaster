@@ -35,14 +35,30 @@ constexpr uint32_t STARTUP_TIME_MS = 1000;
 }  // namespace Fan
 
 namespace StatusLed {
-constexpr uint32_t REVOLUTIONS_PER_FLASH = 500;
-constexpr uint8_t RED_BRIGHTNESS = 204;
-constexpr uint32_t FLASH_DURATION_MS = 150;
+enum class ResponseSource : uint8_t {
+    DUTY,
+    TACH,
+};
+
+// Use TACH after the experimental pulse-counting circuit is stable.
+constexpr ResponseSource RESPONSE_SOURCE = ResponseSource::DUTY;
+constexpr uint16_t LED_COUNT = 1;
+constexpr uint8_t BRIGHTNESS = 96;
+constexpr uint8_t SLOW_DUTY_PERCENT = 1;
+constexpr uint8_t FAST_DUTY_PERCENT = 100;
+constexpr uint32_t SLOW_RPM = 500;
+constexpr uint32_t FAST_RPM = 2500;
+constexpr uint32_t SLOW_FLASH_INTERVAL_MS = 1200;
+constexpr uint32_t FAST_FLASH_INTERVAL_MS = 150;
+constexpr uint32_t FLASH_ON_TIME_MS = 60;
+constexpr uint16_t VIOLET_HUE = 49152;
+constexpr uint8_t SATURATION = 255;
+constexpr uint8_t VALUE = 255;
 }  // namespace StatusLed
 
 namespace SerialConsole {
 constexpr uint32_t BAUD_RATE = 115200;
-constexpr bool PLOTTER_MODE = true;
+constexpr bool PLOTTER_MODE = false;
 constexpr size_t INPUT_BUFFER_SIZE = 24;
 }  // namespace SerialConsole
 

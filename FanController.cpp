@@ -76,15 +76,6 @@ bool FanController::updateRpm(float &rpmResult)
     return true;
 }
 
-uint32_t FanController::takeCompletedRevolutions()
-{
-    portENTER_CRITICAL(&tachMux_);
-    const uint32_t result = completedRevolutionCount_;
-    completedRevolutionCount_ = 0;
-    portEXIT_CRITICAL(&tachMux_);
-    return result;
-}
-
 uint8_t FanController::dutyPercent() const
 {
     return currentDutyPercent_;
@@ -105,14 +96,6 @@ void IRAM_ATTR FanController::tachInterrupt()
 void IRAM_ATTR FanController::handleTachInterrupt()
 {
     portENTER_CRITICAL_ISR(&tachMux_);
-
     rpmWindowPulseCount_++;
-    pulsesTowardNextRevolution_++;
-
-    if (pulsesTowardNextRevolution_ >= Config::Fan::PULSES_PER_REVOLUTION) {
-        pulsesTowardNextRevolution_ -= Config::Fan::PULSES_PER_REVOLUTION;
-        completedRevolutionCount_++;
-    }
-
     portEXIT_CRITICAL_ISR(&tachMux_);
 }

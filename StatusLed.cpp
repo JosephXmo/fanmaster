@@ -2,50 +2,164 @@
 
 #include "Config.h"
 
-void StatusLed::begin()
+static_assert(
+    Config::StatusLed::SLOW_DUTY_PERCENT <
+        Config::StatusLed::FAST_DUTY_PERCENT,
+    "Status LED duty range must increase"
+);
+static_assert(
+    Config::StatusLed::FAST_DUTY_PERCENT <= 100,
+    "Status LED duty range cannot exceed 100 percent"
+);
+static_assert(
+    Config::StatusLed::SLOW_RPM < Config::StatusLed::FAST_RPM,
+    "Status LED RPM range must increase"
+);
+static_assert(
+    Config::StatusLed::FAST_FLASH_INTERVAL_MS >
+        Config::StatusLed::FLASH_ON_TIME_MS,
+    "Status LED flash interval must exceed its on time"
+);
+static_assert(
+    Config::StatusLed::FAST_FLASH_INTERVAL_MS <
+        Config::StatusLed::SLOW_FLASH_INTERVAL_MS,
+    "Status LED flash interval must decrease as the response rises"
+);
+
+StatusLed::StatusLed()
+    : led_(
+          Config::StatusLed::LED_COUNT,
+          Config::Pins::RGB_LED,
+          NEO_GRB + NEO_KHZ800
+      )
 {
-    turnOff();
 }
 
-void StatusLed::addCompletedRevolutions(uint32_t revolutions)
+void StatusLed::begin()
 {
-    const uint64_t total =
-        static_cast<uint64_t>(revolutionsTowardFlash_) + revolutions;
+    led_.begin();
+    led_.setBrightness(Config::StatusLed::BRIGHTNESS);
+    turnOff();
+    stateChangedTimeMs_ = millis();
+}
 
-    pendingFlashes_ += total / Config::StatusLed::REVOLUTIONS_PER_FLASH;
-    revolutionsTowardFlash_ =
-        total % Config::StatusLed::REVOLUTIONS_PER_FLASH;
+void StatusLed::setDutyPercent(uint8_t dutyPercent)
+{
+    currentDutyPercent_ = dutyPercent <= 100 ? dutyPercent : 100;
+}
+
+void StatusLed::setRpm(float rpm)
+{
+    currentRpm_ = rpm > 0.0f ? rpm : 0.0f;
 }
 
 void StatusLed::update()
 {
     const uint32_t now = millis();
 
-    if (isOn_) {
-        if (static_cast<int32_t>(now - offTimeMs_) < 0) {
-            return;
+    if (responseValue() <= 0.0f) {
+        if (isOn_) {
+            turnOff();
         }
 
-        turnOff();
-        isOn_ = false;
-    }
-
-    if (pendingFlashes_ == 0) {
+        wasInactive_ = true;
         return;
     }
 
-    pendingFlashes_--;
-    turnRed();
+    if (wasInactive_) {
+        wasInactive_ = false;
+        turnOn();
+        stateChangedTimeMs_ = now;
+        return;
+    }
+
+    const uint32_t elapsedMs = now - stateChangedTimeMs_;
+
+    if (isOn_) {
+        if (elapsedMs >= Config::StatusLed::FLASH_ON_TIME_MS) {
+            turnOff();
+            stateChangedTimeMs_ = now;
+        }
+        return;
+    }
+
+    const uint32_t offTimeMs =
+        flashIntervalMs() - Config::StatusLed::FLASH_ON_TIME_MS;
+    if (elapsedMs >= offTimeMs) {
+        turnOn();
+        stateChangedTimeMs_ = now;
+    }
+}
+
+float StatusLed::responseValue() const
+{
+    if (Config::StatusLed::RESPONSE_SOURCE ==
+        Config::StatusLed::ResponseSource::DUTY) {
+        return currentDutyPercent_;
+    }
+
+    return currentRpm_;
+}
+
+float StatusLed::normalizedResponse() const
+{
+    const float value = responseValue();
+    const float minimum =
+        Config::StatusLed::RESPONSE_SOURCE ==
+            Config::StatusLed::ResponseSource::DUTY
+        ? Config::StatusLed::SLOW_DUTY_PERCENT
+        : Config::StatusLed::SLOW_RPM;
+    const float maximum =
+        Config::StatusLed::RESPONSE_SOURCE ==
+            Config::StatusLed::ResponseSource::DUTY
+        ? Config::StatusLed::FAST_DUTY_PERCENT
+        : Config::StatusLed::FAST_RPM;
+
+    if (value <= minimum) {
+        return 0.0f;
+    }
+
+    if (value >= maximum) {
+        return 1.0f;
+    }
+
+    return (value - minimum) / (maximum - minimum);
+}
+
+uint32_t StatusLed::flashIntervalMs() const
+{
+    const float intervalRange =
+        Config::StatusLed::SLOW_FLASH_INTERVAL_MS -
+        Config::StatusLed::FAST_FLASH_INTERVAL_MS;
+
+    return Config::StatusLed::SLOW_FLASH_INTERVAL_MS -
+        static_cast<uint32_t>(intervalRange * normalizedResponse());
+}
+
+uint32_t StatusLed::colorForCurrentResponse()
+{
+    const uint16_t hue = Config::StatusLed::VIOLET_HUE -
+        static_cast<uint16_t>(
+            Config::StatusLed::VIOLET_HUE * normalizedResponse()
+        );
+
+    return led_.gamma32(led_.ColorHSV(
+        hue,
+        Config::StatusLed::SATURATION,
+        Config::StatusLed::VALUE
+    ));
+}
+
+void StatusLed::turnOn()
+{
+    led_.setPixelColor(0, colorForCurrentResponse());
+    led_.show();
     isOn_ = true;
-    offTimeMs_ = now + Config::StatusLed::FLASH_DURATION_MS;
 }
 
 void StatusLed::turnOff()
 {
-    rgbLedWrite(Config::Pins::RGB_LED, 0, 0, 0);
-}
-
-void StatusLed::turnRed()
-{
-    rgbLedWrite(Config::Pins::RGB_LED, Config::StatusLed::RED_BRIGHTNESS, 0, 0);
+    led_.clear();
+    led_.show();
+    isOn_ = false;
 }

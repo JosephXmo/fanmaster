@@ -115,10 +115,11 @@ void loop()
 
     float rpm;
     if (fan.updateRpm(rpm)) {
+        statusLed.setRpm(rpm);
         reportFanState(rpm);
     }
 
-    statusLed.addCompletedRevolutions(fan.takeCompletedRevolutions());
+    statusLed.setDutyPercent(fan.dutyPercent());
     statusLed.update();
 
     delay(1);

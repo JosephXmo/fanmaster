@@ -3,7 +3,7 @@
 Fanmaster is an ESP32 Arduino firmware for controlling and monitoring a
 four-wire PWM fan. The current firmware drives the fan at 25 kHz, measures
 speed from its TACH signal, accepts duty-cycle commands over the serial port,
-and flashes the onboard RGB LED after each configured number of revolutions.
+and uses the onboard WS2812 RGB LED to visualize the applied duty setting.
 
 The project is structured as small hardware and application modules rather
 than a single sketch file. Hardware pins and user-adjustable constants live in
@@ -14,7 +14,8 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Start the fan at 100% duty for one second, then use a configurable default.
 - Set an integer duty cycle from 0 through 100 over the serial console.
 - Calculate fan RPM from a two-pulse-per-revolution TACH signal once per second.
-- Flash the RGB status LED after every 500 completed revolutions.
+- Increase the onboard WS2812 LED flash rate as fan duty rises and smoothly
+  shift its color through the visible spectrum from violet to red.
 - Initialize one shared I2C bus for an SSD1306 display and an SHT30 sensor.
 - Initialize four active-low GPIO button inputs with non-blocking debounce.
 - Provide thin wrappers around Adafruit SSD1306 and Sensirion arduino-sht.
@@ -31,7 +32,7 @@ implemented.
 | --- | --- |
 | Fan TACH | GPIO 4, active falling edge |
 | Fan PWM | GPIO 5, 25 kHz, 8-bit |
-| RGB status LED | GPIO 38 |
+| Onboard WS2812 RGB status LED | GPIO 38 |
 | I2C SDA | GPIO 8 |
 | I2C SCL | GPIO 9 |
 | Button 1 | GPIO 10, active low |
@@ -55,9 +56,44 @@ Do not wire a switch so that pressing it directly shorts VCC to ground.
 - Adafruit SSD1306
 - Adafruit GFX Library
 - Sensirion arduino-sht (`SHTSensor.h`)
+- Adafruit NeoPixel 1.15.5 or later
 
 The Adafruit GFX dependency is normally installed automatically with Adafruit
-SSD1306. The display and sensor libraries are not vendored in this repository.
+SSD1306. The display, sensor, and WS2812 libraries are not vendored in this
+repository. This workspace uses Adafruit NeoPixel 1.15.5 with ESP32 Arduino
+core 3.3.11.
+
+## Onboard LED response
+
+The onboard addressable RGB LED is a WS2812 device and must be driven through
+the Adafruit NeoPixel Arduino library. Its indication combines flash frequency
+and color so changes in the selected response source are easy to observe:
+
+- At lower non-zero values, the LED flashes more slowly and appears violet.
+- As the selected response value rises, the flash frequency increases.
+- At the same time, the color changes smoothly in visible-spectrum order:
+  violet, blue, cyan, green, yellow, orange, then red at the highest value.
+- Intermediate values use interpolated colors rather than abrupt color bands.
+
+The response source is selected in `Config.h`:
+
+```cpp
+constexpr ResponseSource RESPONSE_SOURCE = ResponseSource::DUTY;
+```
+
+- `ResponseSource::DUTY` maps applied duty from 1% through 100%. This is the
+  default while the experimental TACH signal is not stable.
+- `ResponseSource::TACH` maps measured speed from 500 through 2500 RPM. Use this
+  after the TACH circuit has been improved and produces reliable counts.
+
+The low endpoint maps to violet flashes every 1200 ms and the high endpoint to
+red flashes every 150 ms. Values between the configured endpoints are linearly
+interpolated for both hue and interval. The LED remains off when the selected
+response value is zero.
+
+LED timing must remain non-blocking so fan control, TACH sampling, serial
+handling, button debounce, and Web Panel requests continue to run while the
+LED is flashing.
 
 ## Wi-Fi Web Panel
 
@@ -134,6 +170,8 @@ local network and does not initially include authentication or TLS.
   timing. A failed or lost connection never starts an access point.
 - `FanController::currentRpm()` exposes the most recent completed one-second
   TACH sample without recounting pulses during an HTTP request.
+- `StatusLed` uses the WS2812 library and maps the configured duty or TACH
+  response source to a non-blocking flash interval and spectrum color.
 - `WebPanel` owns the embedded HTML, CSS, JavaScript, HTTP routes, and strict
   server-side duty validation.
 - HTTP requests, Wi-Fi state updates, TACH sampling, serial commands, and button
@@ -154,6 +192,8 @@ These features are intentionally outside the first Web Panel implementation:
 - Assign button roles and change duty in 5% steps, clamped to `[0, 100]`.
 - Coordinate serial, Web Panel, and button updates through one shared fan-state
   interface.
+- Improve the experimental TACH circuit, verify stable pulse counting, then set
+  `Config::StatusLed::RESPONSE_SOURCE` to `ResponseSource::TACH`.
 
 ### Optional captive portal fallback
 
@@ -193,7 +233,7 @@ must be measured on the selected ESP32 target before this fallback is enabled.
 | `Config.h` | Pins, addresses, timing, and user configuration |
 | `FanController.*` | PWM output, TACH interrupt, and RPM calculation |
 | `SerialConsole.*` | Non-blocking serial duty commands |
-| `StatusLed.*` | Revolution-triggered RGB LED flashes |
+| `StatusLed.*` | WS2812 control with configurable duty/TACH visual response |
 | `I2cBus.*` | Shared configurable I2C bus |
 | `ButtonInputs.*` | Four active-low debounced digital inputs |
 | `OledDisplay.*` | Adafruit SSD1306 wrapper |
@@ -203,6 +243,6 @@ must be measured on the selected ESP32 target before this fallback is enabled.
 
 ## Build status
 
-The source has been statically reviewed against the Arduino-ESP32 3.x API. A
-target-board build has not yet been run in this workspace because Arduino CLI,
-PlatformIO, and the external display/sensor libraries are not installed here.
+The firmware targets `esp32:esp32:esp32s3` with ESP32 Arduino core 3.3.11 and
+Adafruit NeoPixel 1.15.5. The Adafruit revision has passed static checks; a full
+target build remains to be run.
