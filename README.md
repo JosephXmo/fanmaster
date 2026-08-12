@@ -20,7 +20,8 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Initialize four active-low GPIO button inputs with non-blocking debounce.
 - Report every debounced button press and release on the serial console when
   Plotter Mode is disabled.
-- Show fan RPM, duty, IP address, and station MAC address on the OLED.
+- Show fan RPM, duty, IP address, station MAC address, and SHT30 readings on
+  the OLED.
 - Adjust duty with buttons 1 and 2 in 5% steps, or 1% while button 3 is held.
 - Toggle the RGB status indication with button 4.
 - Drive the SSD1306 dashboard and wrap the Sensirion arduino-sht sensor.
@@ -28,7 +29,7 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Serve a responsive Web Panel with live RPM and fan duty control.
 - Expose status and fan-control HTTP API entrypoints.
 
-Temperature/humidity sampling is not yet implemented.
+Temperature/humidity sampling now uses SHT30 on the shared I2C bus.
 
 ## Default hardware configuration
 
@@ -131,8 +132,7 @@ The Web Panel is compiled into the firmware and served at `/`. It contains:
 - A numeric spinner with `min=0`, `max=100`, and `step=1`.
 - A submit button that applies the requested fan duty cycle.
 - Current duty-cycle feedback and clear validation or network error messages.
-- Reserved temperature and humidity readouts that show `--` until sensor
-  sampling is implemented.
+- Live SHT30 temperature and humidity readouts.
 
 The browser will poll sequentially so a slow request cannot create an
 unbounded stack of overlapping one-second requests.
@@ -148,13 +148,14 @@ Returns the most recent completed TACH sample and current control state:
   "rpm": 1234,
   "duty_percent": 35,
   "wifi_connected": true,
-  "temperature_c": null,
-  "humidity_percent": null
+  "temperature_c": 24.6,
+  "humidity_percent": 52.1
 }
 ```
 
 The `rpm` value is updated by the firmware once per second. Temperature and
-humidity remain `null` until the deferred SHT30 work is implemented.
+humidity are refreshed from SHT30 once per second and return `null` if a read
+fails.
 
 #### `POST /api/fan/duty`
 
@@ -199,9 +200,6 @@ local network and does not initially include authentication or TLS.
 
 These features are intentionally outside the first Web Panel implementation:
 
-- Sample SHT30 temperature and humidity at a sensor-appropriate interval.
-- Draw live temperature and humidity on the SSD1306.
-- Replace Web Panel temperature/humidity placeholders with sampled values.
 - Coordinate serial, Web Panel, and button updates through one shared fan-state
   interface.
 - Improve the experimental TACH circuit, verify stable pulse counting, then set

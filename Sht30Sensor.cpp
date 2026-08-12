@@ -28,6 +28,21 @@ bool Sht30Sensor::isReady() const
     return ready_;
 }
 
+bool Sht30Sensor::read(float &temperatureC, float &humidityPercent)
+{
+    if (!ready_) {
+        return false;
+    }
+
+    if (!sensor_.readSample()) {
+        return false;
+    }
+
+    temperatureC = sensor_.getTemperature();
+    humidityPercent = sensor_.getHumidity();
+    return true;
+}
+
 SHTSensor &Sht30Sensor::device()
 {
     return sensor_;

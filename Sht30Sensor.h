@@ -8,6 +8,7 @@ public:
 
     bool begin();
     bool isReady() const;
+    bool read(float &temperatureC, float &humidityPercent);
     SHTSensor &device();
 
 private:

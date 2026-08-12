@@ -4,6 +4,7 @@
 
 #include "Config.h"
 #include "FanController.h"
+#include "Sht30Sensor.h"
 #include "WifiStation.h"
 
 namespace {
@@ -597,10 +598,21 @@ WebPanel::WebPanel()
 {
 }
 
-void WebPanel::begin(FanController &fan, WifiStation &wifiStation)
+void WebPanel::begin(
+    FanController &fan,
+    WifiStation &wifiStation,
+    Sht30Sensor &sht30Sensor,
+    bool &hasClimateReading,
+    float &temperatureC,
+    float &humidityPercent
+)
 {
     fan_ = &fan;
     wifiStation_ = &wifiStation;
+    sht30Sensor_ = &sht30Sensor;
+    hasClimateReading_ = &hasClimateReading;
+    temperatureC_ = &temperatureC;
+    humidityPercent_ = &humidityPercent;
 
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
@@ -710,16 +722,22 @@ void WebPanel::handleStatus()
     const uint32_t roundedRpm = fan_->currentRpm() <= 0.0f
         ? 0
         : static_cast<uint32_t>(fan_->currentRpm() + 0.5f);
+    const String temperatureField =
+        *hasClimateReading_ ? String(*temperatureC_, 1) : "null";
+    const String humidityField =
+        *hasClimateReading_ ? String(*humidityPercent_, 1) : "null";
 
     char response[192];
     snprintf(
         response,
         sizeof(response),
         "{\"rpm\":%lu,\"duty_percent\":%u,\"wifi_connected\":%s,"
-        "\"temperature_c\":null,\"humidity_percent\":null}",
+        "\"temperature_c\":%s,\"humidity_percent\":%s}",
         static_cast<unsigned long>(roundedRpm),
         fan_->dutyPercent(),
-        wifiStation_->isConnected() ? "true" : "false"
+        wifiStation_->isConnected() ? "true" : "false",
+        temperatureField.c_str(),
+        humidityField.c_str()
     );
     sendJson(200, response);
 }

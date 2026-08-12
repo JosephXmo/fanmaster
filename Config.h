@@ -118,4 +118,8 @@ namespace Oled {
 constexpr uint32_t REFRESH_INTERVAL_MS = 1;
 }  // namespace Oled
 
+namespace Sht30 {
+constexpr uint32_t SAMPLE_INTERVAL_MS = 1000;
+}  // namespace Sht30
+
 }  // namespace Config

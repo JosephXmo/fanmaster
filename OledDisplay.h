@@ -15,7 +15,10 @@ public:
         uint8_t dutyPercent,
         bool wifiConnected,
         const IPAddress &ipAddress,
-        const String &macAddress
+        const String &macAddress,
+        bool hasClimateReading,
+        float temperatureC,
+        float humidityPercent
     );
     Adafruit_SSD1306 &device();
 

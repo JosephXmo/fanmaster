@@ -23,6 +23,10 @@ StatusLed statusLed;
 WifiStation wifiStation;
 WebPanel webPanel;
 uint32_t lastOledRefreshMs = 0;
+bool hasClimateReading = false;
+float latestTemperatureC = 0.0f;
+float latestHumidityPercent = 0.0f;
+uint32_t lastSht30SampleMs = 0;
 
 void haltAfterStartupError()
 {
@@ -118,8 +122,35 @@ void updateOled()
         fan.dutyPercent(),
         wifiStation.isConnected(),
         wifiStation.localIp(),
-        wifiStation.macAddress()
+        wifiStation.macAddress(),
+        hasClimateReading,
+        latestTemperatureC,
+        latestHumidityPercent
     );
+}
+
+void sampleSht30()
+{
+    if (!sht30.isReady()) {
+        hasClimateReading = false;
+        return;
+    }
+
+    const uint32_t now = millis();
+    if (now - lastSht30SampleMs < Config::Sht30::SAMPLE_INTERVAL_MS) {
+        return;
+    }
+    lastSht30SampleMs = now;
+
+    float temperatureC;
+    float humidityPercent;
+    if (sht30.read(temperatureC, humidityPercent)) {
+        latestTemperatureC = temperatureC;
+        latestHumidityPercent = humidityPercent;
+        hasClimateReading = true;
+    } else {
+        hasClimateReading = false;
+    }
 }
 
 }  // namespace
@@ -175,7 +206,14 @@ void setup()
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
 
     wifiStation.begin();
-    webPanel.begin(fan, wifiStation);
+    webPanel.begin(
+        fan,
+        wifiStation,
+        sht30,
+        hasClimateReading,
+        latestTemperatureC,
+        latestHumidityPercent
+    );
 }
 
 void loop()
@@ -187,6 +225,7 @@ void loop()
     adjustDutyFromButtons();
     toggleStatusLedFromButton();
     console.update(fan);
+    sampleSht30();
 
     float rpm;
     if (fan.updateRpm(rpm)) {

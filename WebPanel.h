@@ -5,12 +5,20 @@
 
 class FanController;
 class WifiStation;
+class Sht30Sensor;
 
 class WebPanel {
 public:
     WebPanel();
 
-    void begin(FanController &fan, WifiStation &wifiStation);
+    void begin(
+        FanController &fan,
+        WifiStation &wifiStation,
+        Sht30Sensor &sht30Sensor,
+        bool &hasClimateReading,
+        float &temperatureC,
+        float &humidityPercent
+    );
     void update();
 
 private:
@@ -26,6 +34,10 @@ private:
     WebServer server_;
     FanController *fan_ = nullptr;
     WifiStation *wifiStation_ = nullptr;
+    Sht30Sensor *sht30Sensor_ = nullptr;
+    bool *hasClimateReading_ = nullptr;
+    float *temperatureC_ = nullptr;
+    float *humidityPercent_ = nullptr;
     bool started_ = false;
     uint32_t requestCount_ = 0;
     uint32_t lastUpdateMs_ = 0;

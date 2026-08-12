@@ -34,7 +34,10 @@ void OledDisplay::showStatus(
     uint8_t dutyPercent,
     bool wifiConnected,
     const IPAddress &ipAddress,
-    const String &macAddress
+    const String &macAddress,
+    bool hasClimateReading,
+    float temperatureC,
+    float humidityPercent
 )
 {
     if (!ready_) {
@@ -58,15 +61,26 @@ void OledDisplay::showStatus(
     display_.print(rpm, 0);
 
     display_.setTextSize(1);
-    display_.setCursor(0, 36);
-    display_.print("IP  ");
+    display_.setCursor(0, 34);
+    display_.print("IP ");
     if (wifiConnected) {
         display_.print(ipAddress);
     } else {
         display_.print("not connected");
     }
 
-    display_.setCursor(0, 50);
+    display_.setCursor(0, 44);
+    display_.print("T ");
+    if (hasClimateReading) {
+        display_.print(temperatureC, 1);
+        display_.print("C H ");
+        display_.print(humidityPercent, 0);
+        display_.print('%');
+    } else {
+        display_.print("--.-C H --%");
+    }
+
+    display_.setCursor(0, 54);
     display_.print("MAC ");
     display_.print(macAddress);
     display_.display();
