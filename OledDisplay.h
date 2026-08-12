@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Adafruit_SSD1306.h>
+#include <IPAddress.h>
 #include <Wire.h>
 
 class OledDisplay {
@@ -9,6 +10,13 @@ public:
 
     bool begin();
     bool isReady() const;
+    void showStatus(
+        float rpm,
+        uint8_t dutyPercent,
+        bool wifiConnected,
+        const IPAddress &ipAddress,
+        const String &macAddress
+    );
     Adafruit_SSD1306 &device();
 
 private:

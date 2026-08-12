@@ -10,21 +10,21 @@ constexpr uint8_t FAN_PWM = 5;
 constexpr uint8_t RGB_LED = 38;
 
 // Both reserved I2C connectors are wired in parallel to this bus.
-constexpr uint8_t I2C_SDA = 8;
-constexpr uint8_t I2C_SCL = 9;
+constexpr uint8_t I2C_SDA = 6;
+constexpr uint8_t I2C_SCL = 7;
 
 // Active-low buttons. Change these four values to match the carrier board.
-constexpr uint8_t BUTTON_1 = 10;
-constexpr uint8_t BUTTON_2 = 11;
-constexpr uint8_t BUTTON_3 = 12;
-constexpr uint8_t BUTTON_4 = 13;
+constexpr uint8_t BUTTON_1 = 11;
+constexpr uint8_t BUTTON_2 = 12;
+constexpr uint8_t BUTTON_3 = 13;
+constexpr uint8_t BUTTON_4 = 14;
 
 // Adafruit_SSD1306 uses -1 when the display has no dedicated reset pin.
 constexpr int8_t OLED_RESET = -1;
 }  // namespace Pins
 
 namespace Fan {
-constexpr bool PWM_INVERTED = false;
+constexpr bool PWM_INVERTED = true;
 constexpr uint32_t PULSES_PER_REVOLUTION = 2;
 constexpr uint32_t RPM_SAMPLE_INTERVAL_MS = 1000;
 constexpr uint32_t PWM_FREQUENCY_HZ = 25000;
@@ -40,18 +40,27 @@ enum class ResponseSource : uint8_t {
     TACH,
 };
 
+enum class IndicationMode : uint8_t {
+    FLASH,
+    SPECTRUM,
+    FLASH_AND_SPECTRUM,
+};
+
 // Use TACH after the experimental pulse-counting circuit is stable.
-constexpr ResponseSource RESPONSE_SOURCE = ResponseSource::DUTY;
+constexpr ResponseSource RESPONSE_SOURCE = ResponseSource::TACH;
+constexpr IndicationMode INDICATION_MODE = IndicationMode::SPECTRUM;
 constexpr uint16_t LED_COUNT = 1;
-constexpr uint8_t BRIGHTNESS = 96;
+constexpr uint8_t BRIGHTNESS = 32;
 constexpr uint8_t SLOW_DUTY_PERCENT = 1;
 constexpr uint8_t FAST_DUTY_PERCENT = 100;
-constexpr uint32_t SLOW_RPM = 500;
-constexpr uint32_t FAST_RPM = 2500;
+constexpr uint32_t SLOW_RPM = 550;
+constexpr uint32_t FAST_RPM = 2800;
 constexpr uint32_t SLOW_FLASH_INTERVAL_MS = 1200;
 constexpr uint32_t FAST_FLASH_INTERVAL_MS = 150;
-constexpr uint32_t FLASH_ON_TIME_MS = 60;
-constexpr uint16_t VIOLET_HUE = 49152;
+constexpr uint32_t FLASH_ON_TIME_MS = 120;
+// Used by FLASH mode, encoded as 0xRRGGBB.
+constexpr uint32_t FLASH_COLOR_RGB = 0xFF0000;
+constexpr uint8_t VIOLET_HUE = 192;
 constexpr uint8_t SATURATION = 255;
 constexpr uint8_t VALUE = 255;
 }  // namespace StatusLed
@@ -64,8 +73,8 @@ constexpr size_t INPUT_BUFFER_SIZE = 24;
 
 namespace Wifi {
 // Replace these two strings before flashing the firmware.
-constexpr char SSID[] = "YOUR_WIFI_SSID";
-constexpr char PASSWORD[] = "YOUR_WIFI_PASSWORD";
+constexpr char SSID[] = "ssdh";
+constexpr char PASSWORD[] = "zx701031";
 constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 constexpr uint32_t RETRY_INTERVAL_MS = 10000;
 }  // namespace Wifi
@@ -74,6 +83,10 @@ namespace Web {
 constexpr uint16_t HTTP_PORT = 80;
 constexpr uint32_t POLL_INTERVAL_MS = 1000;
 }  // namespace Web
+
+namespace Diagnostics {
+constexpr uint32_t REPORT_INTERVAL_MS = 10000;
+}  // namespace Diagnostics
 
 namespace Buttons {
 constexpr size_t COUNT = 4;
@@ -85,6 +98,8 @@ constexpr uint8_t PINS[COUNT] = {
 };
 constexpr bool ENABLE_INTERNAL_PULLUPS = true;
 constexpr uint32_t DEBOUNCE_MS = 30;
+constexpr uint8_t DUTY_STEP_PERCENT = 5;
+constexpr uint8_t MODIFIED_DUTY_STEP_PERCENT = 1;
 }  // namespace Buttons
 
 namespace I2c {
@@ -98,5 +113,9 @@ constexpr uint16_t OLED_HEIGHT = 64;
 // Reserved endpoint 2: SHT30 temperature/humidity sensor.
 constexpr uint8_t SHT30_ADDRESS = 0x44;
 }  // namespace I2c
+
+namespace Oled {
+constexpr uint32_t REFRESH_INTERVAL_MS = 1;
+}  // namespace Oled
 
 }  // namespace Config

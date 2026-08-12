@@ -29,6 +29,49 @@ bool OledDisplay::isReady() const
     return ready_;
 }
 
+void OledDisplay::showStatus(
+    float rpm,
+    uint8_t dutyPercent,
+    bool wifiConnected,
+    const IPAddress &ipAddress,
+    const String &macAddress
+)
+{
+    if (!ready_) {
+        return;
+    }
+
+    display_.clearDisplay();
+    display_.setTextColor(SSD1306_WHITE);
+    display_.setTextWrap(false);
+
+    display_.setTextSize(1);
+    display_.setCursor(0, 0);
+    display_.print("FANMASTER  DUTY ");
+    display_.print(dutyPercent);
+    display_.print('%');
+    display_.drawFastHLine(0, 10, display_.width(), SSD1306_WHITE);
+
+    display_.setTextSize(2);
+    display_.setCursor(0, 14);
+    display_.print("RPM ");
+    display_.print(rpm, 0);
+
+    display_.setTextSize(1);
+    display_.setCursor(0, 36);
+    display_.print("IP  ");
+    if (wifiConnected) {
+        display_.print(ipAddress);
+    } else {
+        display_.print("not connected");
+    }
+
+    display_.setCursor(0, 50);
+    display_.print("MAC ");
+    display_.print(macAddress);
+    display_.display();
+}
+
 Adafruit_SSD1306 &OledDisplay::device()
 {
     return display_;

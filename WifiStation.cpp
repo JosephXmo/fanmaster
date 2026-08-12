@@ -7,6 +7,7 @@ void WifiStation::begin()
     WiFi.persistent(false);
     WiFi.setAutoReconnect(false);
     WiFi.mode(WIFI_STA);
+    macAddress_ = WiFi.macAddress();
     startConnectionAttempt(millis());
 }
 
@@ -20,9 +21,18 @@ void WifiStation::update()
 
         if (!connected_) {
             connected_ = true;
-            Serial.print("Wi-Fi connected. Web Panel: http://");
-            Serial.print(WiFi.localIP());
-            Serial.println('/');
+            if (!Config::SerialConsole::PLOTTER_MODE) {
+                Serial.print("[WIFI] connected ip=");
+                Serial.print(WiFi.localIP());
+                Serial.print(" gateway=");
+                Serial.print(WiFi.gatewayIP());
+                Serial.print(" subnet=");
+                Serial.print(WiFi.subnetMask());
+                Serial.print(" rssi_dbm=");
+                Serial.print(WiFi.RSSI());
+                Serial.print(" channel=");
+                Serial.println(WiFi.channel());
+            }
         }
 
         return;
@@ -32,7 +42,9 @@ void WifiStation::update()
         connected_ = false;
         connecting_ = false;
         nextAttemptMs_ = now + Config::Wifi::RETRY_INTERVAL_MS;
-        Serial.println("Wi-Fi disconnected; reconnect scheduled.");
+        if (!Config::SerialConsole::PLOTTER_MODE) {
+            Serial.println("[WIFI] disconnected; reconnect scheduled");
+        }
     }
 
     if (connecting_) {
@@ -43,7 +55,9 @@ void WifiStation::update()
         WiFi.disconnect(false, false);
         connecting_ = false;
         nextAttemptMs_ = now + Config::Wifi::RETRY_INTERVAL_MS;
-        Serial.println("Wi-Fi connection timed out; reconnect scheduled.");
+        if (!Config::SerialConsole::PLOTTER_MODE) {
+            Serial.println("[WIFI] connection timed out; reconnect scheduled");
+        }
         return;
     }
 
@@ -62,10 +76,17 @@ IPAddress WifiStation::localIp() const
     return WiFi.localIP();
 }
 
+const String &WifiStation::macAddress() const
+{
+    return macAddress_;
+}
+
 void WifiStation::startConnectionAttempt(uint32_t now)
 {
-    Serial.print("Connecting to Wi-Fi SSID: ");
-    Serial.println(Config::Wifi::SSID);
+    if (!Config::SerialConsole::PLOTTER_MODE) {
+        Serial.print("[WIFI] connecting to SSID: ");
+        Serial.println(Config::Wifi::SSID);
+    }
 
     WiFi.begin(Config::Wifi::SSID, Config::Wifi::PASSWORD);
     attemptStartedMs_ = now;

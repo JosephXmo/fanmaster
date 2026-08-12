@@ -25,37 +25,66 @@ static_assert(
         Config::StatusLed::SLOW_FLASH_INTERVAL_MS,
     "Status LED flash interval must decrease as the response rises"
 );
+static_assert(
+    Config::StatusLed::FLASH_COLOR_RGB <= 0xFFFFFF,
+    "Status LED flash color must use the 0xRRGGBB format"
+);
 
-StatusLed::StatusLed()
-    : led_(
-          Config::StatusLed::LED_COUNT,
-          Config::Pins::RGB_LED,
-          NEO_GRB + NEO_KHZ800
-      )
-{
-}
+StatusLed::StatusLed() = default;
 
 void StatusLed::begin()
 {
-    led_.begin();
-    led_.setBrightness(Config::StatusLed::BRIGHTNESS);
+    FastLED.addLeds<WS2812B, Config::Pins::RGB_LED, GRB>(
+        leds_,
+        Config::StatusLed::LED_COUNT
+    );
+    FastLED.setBrightness(Config::StatusLed::BRIGHTNESS);
     turnOff();
     stateChangedTimeMs_ = millis();
 }
 
 void StatusLed::setDutyPercent(uint8_t dutyPercent)
 {
-    currentDutyPercent_ = dutyPercent <= 100 ? dutyPercent : 100;
+    const uint8_t nextDutyPercent = dutyPercent <= 100 ? dutyPercent : 100;
+    if (nextDutyPercent != currentDutyPercent_) {
+        currentDutyPercent_ = nextDutyPercent;
+        colorRefreshPending_ = true;
+    }
 }
 
 void StatusLed::setRpm(float rpm)
 {
-    currentRpm_ = rpm > 0.0f ? rpm : 0.0f;
+    const float nextRpm = rpm > 0.0f ? rpm : 0.0f;
+    if (nextRpm != currentRpm_) {
+        currentRpm_ = nextRpm;
+        colorRefreshPending_ = true;
+    }
+}
+
+void StatusLed::toggleEnabled()
+{
+    enabled_ = !enabled_;
+    wasInactive_ = true;
+    colorRefreshPending_ = true;
+    stateChangedTimeMs_ = millis();
+
+    if (!enabled_) {
+        // Keep FastLED active and explicitly transmit black when disabled.
+        turnOff();
+    }
 }
 
 void StatusLed::update()
 {
     const uint32_t now = millis();
+    reportDiagnostics(now);
+
+    if (!enabled_) {
+        if (isOn_) {
+            turnOff();
+        }
+        return;
+    }
 
     if (responseValue() <= 0.0f) {
         if (isOn_) {
@@ -63,6 +92,15 @@ void StatusLed::update()
         }
 
         wasInactive_ = true;
+        return;
+    }
+
+    if (Config::StatusLed::INDICATION_MODE ==
+        Config::StatusLed::IndicationMode::SPECTRUM) {
+        if (wasInactive_ || colorRefreshPending_) {
+            wasInactive_ = false;
+            turnOn();
+        }
         return;
     }
 
@@ -136,30 +174,67 @@ uint32_t StatusLed::flashIntervalMs() const
         static_cast<uint32_t>(intervalRange * normalizedResponse());
 }
 
-uint32_t StatusLed::colorForCurrentResponse()
+CRGB StatusLed::colorForCurrentResponse() const
 {
-    const uint16_t hue = Config::StatusLed::VIOLET_HUE -
-        static_cast<uint16_t>(
+    const uint8_t hue = Config::StatusLed::VIOLET_HUE -
+        static_cast<uint8_t>(
             Config::StatusLed::VIOLET_HUE * normalizedResponse()
         );
 
-    return led_.gamma32(led_.ColorHSV(
+    return CHSV(
         hue,
         Config::StatusLed::SATURATION,
         Config::StatusLed::VALUE
-    ));
+    );
+}
+
+void StatusLed::showPixels()
+{
+    const uint32_t startedUs = micros();
+    FastLED.show();
+    const uint32_t durationUs = micros() - startedUs;
+
+    showCount_++;
+    if (durationUs > maxShowDurationUs_) {
+        maxShowDurationUs_ = durationUs;
+    }
+}
+
+void StatusLed::reportDiagnostics(uint32_t now)
+{
+    if (Config::SerialConsole::PLOTTER_MODE ||
+        now - lastDiagnosticMs_ < Config::Diagnostics::REPORT_INTERVAL_MS) {
+        return;
+    }
+
+    lastDiagnosticMs_ = now;
+    Serial.print("[LED] enabled=");
+    Serial.print(enabled_ ? "yes" : "no");
+    Serial.print(" shows=");
+    Serial.print(showCount_);
+    Serial.print(" max_show_us=");
+    Serial.println(maxShowDurationUs_);
+    showCount_ = 0;
+    maxShowDurationUs_ = 0;
 }
 
 void StatusLed::turnOn()
 {
-    led_.setPixelColor(0, colorForCurrentResponse());
-    led_.show();
+    if (Config::StatusLed::INDICATION_MODE ==
+        Config::StatusLed::IndicationMode::FLASH) {
+        leds_[0] = CRGB(Config::StatusLed::FLASH_COLOR_RGB);
+    } else {
+        leds_[0] = colorForCurrentResponse();
+    }
+
+    showPixels();
     isOn_ = true;
+    colorRefreshPending_ = false;
 }
 
 void StatusLed::turnOff()
 {
-    led_.clear();
-    led_.show();
+    fill_solid(leds_, Config::StatusLed::LED_COUNT, CRGB::Black);
+    showPixels();
     isOn_ = false;
 }

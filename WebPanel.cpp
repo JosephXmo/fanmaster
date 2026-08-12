@@ -610,20 +610,79 @@ void WebPanel::begin(FanController &fan, WifiStation &wifiStation)
 
 void WebPanel::update()
 {
+    const uint32_t now = millis();
+    if (lastUpdateMs_ != 0) {
+        const uint32_t updateGapMs = now - lastUpdateMs_;
+        if (updateGapMs > maxUpdateGapMs_) {
+            maxUpdateGapMs_ = updateGapMs;
+        }
+    }
+    lastUpdateMs_ = now;
+
     if (!started_ && wifiStation_->isConnected()) {
         server_.begin();
         started_ = true;
-        Serial.println("Web Panel server started.");
+        lastDiagnosticMs_ = now;
+
+        if (!Config::SerialConsole::PLOTTER_MODE) {
+            Serial.print("[WEB] listening at http://");
+            Serial.print(wifiStation_->localIp());
+            Serial.print(':');
+            Serial.print(Config::Web::HTTP_PORT);
+            Serial.print("/ free_heap=");
+            Serial.println(ESP.getFreeHeap());
+        }
     }
 
     if (started_) {
         server_.handleClient();
+        reportDiagnostics(now);
     }
+}
+
+void WebPanel::recordRequest(const char *label, bool verbose)
+{
+    requestCount_++;
+    if (!verbose || Config::SerialConsole::PLOTTER_MODE) {
+        return;
+    }
+
+    Serial.print("[WEB] request ");
+    Serial.println(label);
+}
+
+void WebPanel::reportDiagnostics(uint32_t now)
+{
+    if (Config::SerialConsole::PLOTTER_MODE ||
+        now - lastDiagnosticMs_ < Config::Diagnostics::REPORT_INTERVAL_MS) {
+        return;
+    }
+
+    lastDiagnosticMs_ = now;
+    Serial.print("[WEB] alive ip=");
+    Serial.print(wifiStation_->localIp());
+    Serial.print(" requests=");
+    Serial.print(requestCount_);
+    Serial.print(" max_loop_gap_ms=");
+    Serial.print(maxUpdateGapMs_);
+    Serial.print(" free_heap=");
+    Serial.println(ESP.getFreeHeap());
+    maxUpdateGapMs_ = 0;
 }
 
 void WebPanel::handleRoot()
 {
+    recordRequest("GET /", true);
+    const uint32_t startedMs = millis();
+    const uint32_t heapBefore = ESP.getFreeHeap();
     String page(FPSTR(WEB_PANEL_HTML));
+    if (page.length() == 0) {
+        if (!Config::SerialConsole::PLOTTER_MODE) {
+            Serial.println("[WEB] root page allocation failed");
+        }
+        server_.send(503, "text/plain; charset=utf-8", "Out of memory\n");
+        return;
+    }
     page.replace(
         "__POLL_INTERVAL_MS__",
         String(Config::Web::POLL_INTERVAL_MS)
@@ -631,10 +690,23 @@ void WebPanel::handleRoot()
 
     server_.sendHeader("Cache-Control", "no-store");
     server_.send(200, "text/html; charset=utf-8", page);
+
+    if (!Config::SerialConsole::PLOTTER_MODE) {
+        Serial.print("[WEB] root bytes=");
+        Serial.print(page.length());
+        Serial.print(" handler_ms=");
+        Serial.print(millis() - startedMs);
+        Serial.print(" heap_delta=");
+        Serial.println(
+            static_cast<int32_t>(heapBefore) -
+            static_cast<int32_t>(ESP.getFreeHeap())
+        );
+    }
 }
 
 void WebPanel::handleStatus()
 {
+    recordRequest("GET /api/status", false);
     const uint32_t roundedRpm = fan_->currentRpm() <= 0.0f
         ? 0
         : static_cast<uint32_t>(fan_->currentRpm() + 0.5f);
@@ -654,6 +726,7 @@ void WebPanel::handleStatus()
 
 void WebPanel::handleSetDuty()
 {
+    recordRequest("POST /api/fan/duty", true);
     uint8_t requestedDuty;
     if (!parseDutyArgument(requestedDuty)) {
         sendJson(
@@ -677,6 +750,7 @@ void WebPanel::handleSetDuty()
 
 void WebPanel::handleNotFound()
 {
+    recordRequest("not found", true);
     if (server_.uri().startsWith("/api/")) {
         sendJson(404, "{\"error\":\"API endpoint not found\"}");
         return;

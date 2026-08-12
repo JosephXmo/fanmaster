@@ -10,6 +10,7 @@ public:
 
     bool isConnected() const;
     IPAddress localIp() const;
+    const String &macAddress() const;
 
 private:
     void startConnectionAttempt(uint32_t now);
@@ -18,4 +19,5 @@ private:
     uint32_t nextAttemptMs_ = 0;
     bool connecting_ = false;
     bool connected_ = false;
+    String macAddress_;
 };

@@ -22,6 +22,7 @@ SerialConsole console;
 StatusLed statusLed;
 WifiStation wifiStation;
 WebPanel webPanel;
+uint32_t lastOledRefreshMs = 0;
 
 void haltAfterStartupError()
 {
@@ -48,6 +49,77 @@ void reportFanState(float rpm)
     Serial.print(" RPM | Duty: ");
     Serial.print(fan.dutyPercent());
     Serial.println('%');
+}
+
+void reportButtonEvents()
+{
+    if (Config::SerialConsole::PLOTTER_MODE) {
+        return;
+    }
+
+    for (size_t index = 0; index < Config::Buttons::COUNT; index++) {
+        const ButtonId button = static_cast<ButtonId>(index);
+
+        if (!buttons.wasPressed(button) && !buttons.wasReleased(button)) {
+            continue;
+        }
+
+        Serial.print("Button ");
+        Serial.print(index + 1);
+        Serial.println(buttons.wasPressed(button) ? " pressed" : " released");
+    }
+}
+
+void adjustDutyFromButtons()
+{
+    const bool increase = buttons.wasPressed(ButtonId::Button1);
+    const bool decrease = buttons.wasPressed(ButtonId::Button2);
+
+    if (increase == decrease) {
+        return;
+    }
+
+    const uint8_t step = buttons.isPressed(ButtonId::Button3)
+        ? Config::Buttons::MODIFIED_DUTY_STEP_PERCENT
+        : Config::Buttons::DUTY_STEP_PERCENT;
+    const int16_t signedStep = increase ? step : -step;
+    int16_t nextDuty = fan.dutyPercent() + signedStep;
+
+    if (nextDuty < 0) {
+        nextDuty = 0;
+    } else if (nextDuty > 100) {
+        nextDuty = 100;
+    }
+
+    fan.setDutyPercent(static_cast<uint8_t>(nextDuty));
+}
+
+void toggleStatusLedFromButton()
+{
+    if (buttons.wasPressed(ButtonId::Button4)) {
+        statusLed.toggleEnabled();
+    }
+}
+
+void updateOled()
+{
+    if (!oled.isReady()) {
+        return;
+    }
+
+    const uint32_t now = millis();
+    if (now - lastOledRefreshMs < Config::Oled::REFRESH_INTERVAL_MS) {
+        return;
+    }
+
+    lastOledRefreshMs = now;
+    oled.showStatus(
+        fan.currentRpm(),
+        fan.dutyPercent(),
+        wifiStation.isConnected(),
+        wifiStation.localIp(),
+        wifiStation.macAddress()
+    );
 }
 
 }  // namespace
@@ -111,6 +183,9 @@ void loop()
     wifiStation.update();
     webPanel.update();
     buttons.update();
+    reportButtonEvents();
+    adjustDutyFromButtons();
+    toggleStatusLedFromButton();
     console.update(fan);
 
     float rpm;
@@ -121,6 +196,7 @@ void loop()
 
     statusLed.setDutyPercent(fan.dutyPercent());
     statusLed.update();
+    updateOled();
 
     delay(1);
 }
