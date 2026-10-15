@@ -42,11 +42,11 @@ int main(int argc, char **argv)
     assert(server.socket.body.find("\"duty_percent\":100") != std::string::npos);
     assert(server.socket.body.find("\"poll_interval_ms\":1000") != std::string::npos);
     assert(server.socket.body.find("\"temperature_c\":null") != std::string::npos);
-    climate = {true, 24.6f, 52.1f};
+    climate.publish({true, 24.6f, 52.1f});
     server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"temperature_c\":24.6") != std::string::npos);
     assert(server.socket.body.find("\"humidity_percent\":52.1") != std::string::npos);
-    climate.valid = false;
+    climate.publish({false, 24.6f, 52.1f});
     server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"temperature_c\":null") != std::string::npos);
     assert(server.socket.body.find("\"humidity_percent\":null") != std::string::npos);

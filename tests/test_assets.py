@@ -46,11 +46,16 @@ class AssetTests(unittest.TestCase):
         class Serial:
             bad_ack = False
             def __init__(self, *args, **kwargs):
+                assert not args and kwargs.get('port') is None
+                self.dtr = self.rts = True
                 self.lines = []
                 self.received = bytearray()
                 self.uploading = False
                 instances.append(self)
-            def __enter__(self): return self
+            def __enter__(self):
+                assert self.port == '/dev/fake'
+                assert self.dtr is False and self.rts is False
+                return self
             def __exit__(self, *args): pass
             def readline(self): return self.lines.pop(0) if self.lines else b''
             def write(self, value):

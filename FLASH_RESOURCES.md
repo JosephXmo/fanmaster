@@ -72,6 +72,11 @@ needs only SPIMemory; it does not run the fan application or change NVS.
      /tmp/fanmaster-assets.bin --port /dev/cu.usbmodemYOUR_PORT
    ```
 
+   The host sets DTR and RTS low before opening the native USB port, avoiding
+   accidental ROM download mode on ESP32-S3. If esptool leaves the board in
+   download mode, use its `--after watchdog-reset` option with a read-only
+   command, or press RESET after releasing BOOT, then retry the transfer.
+
    The uploader erases only the sectors occupied by the new image, checks every
    page by reading it back, and verifies the image CRC. It writes the header
    last. `DONE verified` confirms the serial transfer and flash readback, not
@@ -116,11 +121,18 @@ copied into a whole-page `String`. Runtime settings should be obtained through
 APIs; templates are not rewritten in external HTML. Browser telemetry continues
 at one-second intervals.
 
-Local button, serial, RPM and LED processing runs between resource verification
-and transmission chunks. PWM remains hardware-driven and TACH interrupts keep
-counting. The existing synchronous WebServer can still pause on request parsing
-or slow socket writes, so this is not a hard real-time server. OLED refresh is
-limited to once per 250 ms. Verify maximum loop gaps on the actual board.
+The network task on core 0 runs at idle priority and owns Wi-Fi, DNS, resource
+reads and HTTP. Sharing idle priority lets IDLE0 run even when the synchronous
+parser yields without sleeping; task watchdog protection stays enabled. The
+Arduino loop task on core 1 owns buttons, serial commands, RPM, LED, SHT30 and
+OLED. No local-control callback runs from resource verification/transmission.
+The synchronous WebServer can pause on request parsing or socket writes, but
+these waits no longer stop local controls. PWM remains hardware-driven and
+TACH interrupts keep counting. Cached climate data and duty updates are
+synchronized across tasks. OLED refresh is limited to once per 250 ms.
+USB CDC logging uses a zero transmit timeout, so a missing/stalled serial
+reader cannot hold up controls. `[LOCAL]` reports control-loop gaps separately
+from `[WEB]` network-task gaps. Measure both on the actual board.
 
 ## Provisioning behavior
 

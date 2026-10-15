@@ -35,6 +35,8 @@ bool FanController::begin()
 
 void FanController::setDutyPercent(uint8_t dutyPercent)
 {
+    // Serialize HTTP and local setters so the cached duty matches the PWM write.
+    std::lock_guard<std::mutex> lock(dutyMutex_);
     if (dutyPercent > 100) {
         dutyPercent = 100;
     }

@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "ButtonInputs.h"
 #include "Config.h"
@@ -116,22 +118,23 @@ void updateOled()
     }
 
     lastOledRefreshMs = now;
+    const ClimateSample sample = climate.snapshot();
     oled.showStatus(
         fan.currentRpm(),
         fan.dutyPercent(),
         wifiStation.isConnected(),
         wifiStation.localIp(),
         Config::VERSION,
-        climate.valid,
-        climate.temperatureC,
-        climate.humidityPercent
+        sample.valid,
+        sample.temperatureC,
+        sample.humidityPercent
     );
 }
 
 void sampleSht30()
 {
     if (!sht30.isReady()) {
-        climate.valid = false;
+        climate.publish({});
         return;
     }
 
@@ -144,11 +147,9 @@ void sampleSht30()
     float temperatureC;
     float humidityPercent;
     if (sht30.read(temperatureC, humidityPercent)) {
-        climate.temperatureC = temperatureC;
-        climate.humidityPercent = humidityPercent;
-        climate.valid = true;
+        climate.publish({true, temperatureC, humidityPercent});
     } else {
-        climate.valid = false;
+        climate.publish({});
     }
 }
 
@@ -171,11 +172,29 @@ void serviceLocalControls()
     updateOled();
 }
 
+void networkTask(void *)
+{
+    // Only this task owns DNS, HTTP, provisioning and external asset reads.
+    // Local controls and I2C never run from a resource-serving callback.
+    wifiStation.begin();
+    webPanel.begin(fan, wifiStation, nullptr, climate);
+    while (true) {
+        wifiStation.update();
+        webPanel.update();
+        vTaskDelay(1);
+    }
+}
+
 }  // namespace
 
 void setup()
 {
     Serial.begin(Config::SerialConsole::BAUD_RATE);
+#if ARDUINO_USB_CDC_ON_BOOT
+    // USB can remain connected while no monitor drains its output. Diagnostics
+    // must drop bytes instead of waiting seconds per print and stopping controls.
+    Serial.setTxTimeoutMs(0);
+#endif
     delay(200);
 
     Serial.println();
@@ -223,16 +242,29 @@ void setup()
     Serial.println();
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
 
-    wifiStation.begin();
-    webPanel.begin(fan, wifiStation, serviceLocalControls, climate);
+    // WebServer's parser can yield without sleeping. Share idle priority so
+    // IDLE0 still runs/feeds its watchdog even during a slow request header.
+    if (xTaskCreatePinnedToCore(networkTask, "fanmaster-net", 8192, nullptr,
+                                tskIDLE_PRIORITY, nullptr, 0) != pdPASS) {
+        Serial.println("ERROR: network task could not start; local controls remain active.");
+    }
 }
 
 void loop()
 {
-    wifiStation.update();
+    static uint32_t previousMs = 0, maxGapMs = 0, lastReportMs = 0;
+    const uint32_t now = millis();
+    if (previousMs && now - previousMs > maxGapMs) maxGapMs = now - previousMs;
+    previousMs = now;
     sampleSht30();
-    webPanel.update();
     serviceLocalControls();
+    if (!Config::SerialConsole::PLOTTER_MODE &&
+        now - lastReportMs >= Config::Diagnostics::REPORT_INTERVAL_MS) {
+        Serial.print("[LOCAL] max_loop_gap_ms=");
+        Serial.println(maxGapMs);
+        maxGapMs = 0;
+        lastReportMs = now;
+    }
 
     delay(1);
 }

@@ -92,7 +92,13 @@ def upload(image, port, baud):
     except ImportError as exc:
         raise SystemExit('Install pyserial in a venv: python3 -m pip install pyserial') from exc
     # Never auto-select a port or flash the ESP32 application.
-    with serial.Serial(port, baud, timeout=1, write_timeout=10) as connection:
+    # Native ESP32-S3 USB/JTAG interprets asserted DTR/RTS as reset/boot
+    # controls. Set both before opening, rather than entering download mode.
+    connection = serial.Serial(baudrate=baud, timeout=1, write_timeout=10)
+    connection.dtr = False
+    connection.rts = False
+    connection.port = port
+    with connection:
         def wait_for(expected, timeout):
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:

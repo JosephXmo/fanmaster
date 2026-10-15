@@ -4,6 +4,7 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <atomic>
 
 class WifiStation {
 public:
@@ -37,7 +38,7 @@ private:
     uint32_t lastSetupAttemptMs_ = 0;
     bool nvsReady_ = false;
     bool connecting_ = false;
-    bool connected_ = false;
+    std::atomic<bool> connected_{false};
     bool setupActive_ = false;
     bool candidate_ = false;
     bool attemptPending_ = false;

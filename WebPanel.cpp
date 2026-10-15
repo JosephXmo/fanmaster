@@ -203,9 +203,10 @@ void WebPanel::handleStatus()
 
     char temperature[24] = "null";
     char humidity[24] = "null";
-    if (climate_->valid) {
-        snprintf(temperature, sizeof(temperature), "%.1f", climate_->temperatureC);
-        snprintf(humidity, sizeof(humidity), "%.1f", climate_->humidityPercent);
+    const ClimateSample sample = climate_->snapshot();
+    if (sample.valid) {
+        snprintf(temperature, sizeof(temperature), "%.1f", sample.temperatureC);
+        snprintf(humidity, sizeof(humidity), "%.1f", sample.humidityPercent);
     }
     char response[192];
     snprintf(

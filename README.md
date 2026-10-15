@@ -128,7 +128,8 @@ Arduino core's built-in `WiFi` and
 - Verify submitted credentials by connecting before saving one NVS record.
   Failed candidates preserve the previous record. Save failures leave setup open.
 - Stop the setup AP five seconds after a successful connection and save.
-- Keep local firmware processing active between resource transmission chunks.
+- Run Wi-Fi/DNS/HTTP on a dedicated network task on core 0; local controls,
+  sensor sampling and OLED stay on the Arduino loop task on core 1.
 - Print the station IP on connection. Passwords are never logged or echoed.
 
 The open setup link and default NVS storage are not encrypted. The setup AP
@@ -198,8 +199,15 @@ local network and does not initially include authentication or TLS.
 - `FanController::currentRpm()` exposes a cached one-second sample based on
   TACH interrupt counts. HTTP requests do not recount pulses.
 - Buttons, serial and HTTP all update the same `FanController` instance.
-- Local control and LED processing run between resource chunks. The synchronous
-  HTTP server still has request/socket waits; target loop gaps must be measured.
+- The network task owns provisioning, resource reads and the synchronous HTTP
+  server. Its request/socket waits do not run on the local control task.
+  It shares idle priority on core 0 so parser yield loops cannot starve the
+  idle-task watchdog; watchdog protection stays enabled.
+- Temperature/humidity snapshots use a mutex; RPM/connection state are atomic.
+  Concurrent duty setters serialize the PWM write and cached duty update.
+- USB CDC logging drops output when the host stops reading instead of blocking
+  physical controls. The `[LOCAL]` diagnostic measures control-loop gaps;
+  `[WEB]` measures the separate network-task gaps.
 - The OLED refreshes at most once per 250 ms so display transfers leave time for
   input and network handling.
 - Buttons 1/2 adjust duty by 5%; holding button 3 changes the step to 1%.
