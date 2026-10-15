@@ -26,9 +26,11 @@ constexpr int INPUT = 0, OUTPUT = 1, HIGH = 1, LOW = 0, INPUT_PULLUP = 2, FALLIN
 inline std::array<int, 64> fakePinLevels = [] { std::array<int, 64> pins{}; pins.fill(HIGH); return pins; }();
 inline int digitalRead(int pin) { return fakePinLevels.at(pin); }
 inline bool ledcAttach(int, int, int) { return true; }
-inline void ledcWrite(int, int) {}
+inline int fakePwmValue = -1;
+inline void ledcWrite(int, int value) { fakePwmValue = value; }
 inline int digitalPinToInterrupt(int pin) { return pin; }
-inline void attachInterrupt(int, void (*)(), int) {}
+inline void (*fakeTachInterrupt)() = nullptr;
+inline void attachInterrupt(int, void (*callback)(), int) { fakeTachInterrupt = callback; }
 inline void pinMode(int, int) {}
 inline void digitalWrite(int, int) {}
 class String {

@@ -18,7 +18,10 @@ public:
         const String &version,
         bool hasClimateReading,
         float temperatureC,
-        float humidityPercent
+        float humidityPercent,
+        bool rpmControl = false,
+        uint32_t targetRpm = 0,
+        bool thermalControl = false
     );
     Adafruit_SSD1306 &device();
 

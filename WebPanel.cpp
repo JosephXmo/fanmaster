@@ -27,6 +27,10 @@ void WebPanel::begin(FanController &fan, WifiStation &wifiStation,
     server_.on("/", HTTP_GET, [this]() { handleRoot(); });
     server_.on("/api/status", HTTP_GET, [this]() { handleStatus(); });
     server_.on("/api/fan/duty", HTTP_POST, [this]() { handleSetDuty(); });
+    server_.on("/api/fan/rpm", HTTP_POST, [this]() { handleSetRpm(); });
+    server_.on("/api/fan/mode", HTTP_POST, [this]() { handleSetMode(); });
+    server_.on("/api/thermal/mode", HTTP_POST, [this]() { handleThermalMode(); });
+    server_.on("/api/thermal/curve", HTTP_POST, [this]() { handleThermalCurve(); });
     server_.on("/setup", HTTP_GET, [this]() { handleSetup(); });
     server_.on("/api/wifi/configure", HTTP_POST, [this]() { handleProvision(); });
     server_.on("/api/wifi/status", HTTP_GET, [this]() { handleWifiStatus(); });
@@ -197,29 +201,52 @@ void WebPanel::handleWifiStatus()
 void WebPanel::handleStatus()
 {
     recordRequest("GET /api/status", false);
-    const uint32_t roundedRpm = fan_->currentRpm() <= 0.0f
+    sendStatus();
+}
+
+void WebPanel::sendStatus()
+{
+    const FanSnapshot state = fan_->snapshot();
+    const uint32_t roundedRpm = state.rpm <= 0.0f
         ? 0
-        : static_cast<uint32_t>(fan_->currentRpm() + 0.5f);
+        : static_cast<uint32_t>(state.rpm + 0.5f);
 
     char temperature[24] = "null";
     char humidity[24] = "null";
     const ClimateSample sample = climate_->snapshot();
-    if (sample.valid) {
+    if (sample.valid && std::isfinite(sample.temperatureC) && std::isfinite(sample.humidityPercent)) {
         snprintf(temperature, sizeof(temperature), "%.1f", sample.temperatureC);
         snprintf(humidity, sizeof(humidity), "%.1f", sample.humidityPercent);
     }
-    char response[192];
+    char response[768];
     snprintf(
         response,
         sizeof(response),
         "{\"rpm\":%lu,\"duty_percent\":%u,\"wifi_connected\":%s,"
-        "\"temperature_c\":%s,\"humidity_percent\":%s,\"poll_interval_ms\":%lu}",
+        "\"temperature_c\":%s,\"humidity_percent\":%s,\"poll_interval_ms\":%lu,"
+        "\"mode\":\"%s\",\"target_rpm\":%lu,\"manual_duty_percent\":%u,"
+        "\"min_rpm\":%lu,\"max_rpm\":%lu,\"control_revision\":%lu,"
+        "\"fixed_mode\":\"%s\",\"thermal_sensor_ready\":%s,\"thermal_exit_reason\":\"%s\","
+        "\"thermal_points\":[{\"temperature_c\":%.1f,\"duty_percent\":%u},"
+        "{\"temperature_c\":%.1f,\"duty_percent\":%u},{\"temperature_c\":%.1f,\"duty_percent\":%u}]}",
         static_cast<unsigned long>(roundedRpm),
-        fan_->dutyPercent(),
+        state.appliedDutyPercent,
         wifiStation_->isConnected() ? "true" : "false",
         temperature,
         humidity,
-        static_cast<unsigned long>(Config::Web::POLL_INTERVAL_MS)
+        static_cast<unsigned long>(Config::Web::POLL_INTERVAL_MS),
+        state.mode == FanMode::Thermal ? "thermal" : state.mode == FanMode::Rpm ? "rpm" : "duty",
+        static_cast<unsigned long>(state.targetRpm), state.manualDutyPercent,
+        static_cast<unsigned long>(Config::RpmControl::MIN_RPM),
+        static_cast<unsigned long>(Config::RpmControl::MAX_RPM),
+        static_cast<unsigned long>(state.controlRevision),
+        state.fixedMode == FanMode::Rpm ? "rpm" : "duty",
+        state.thermalSensorReady ? "true" : "false",
+        state.thermalExitReason == ThermalExitReason::Sensor ? "sensor" :
+            state.thermalExitReason == ThermalExitReason::Manual ? "manual" : "none",
+        state.thermalCurve.points[0].temperatureDeciC / 10.0, state.thermalCurve.points[0].dutyPercent,
+        state.thermalCurve.points[1].temperatureDeciC / 10.0, state.thermalCurve.points[1].dutyPercent,
+        state.thermalCurve.points[2].temperatureDeciC / 10.0, state.thermalCurve.points[2].dutyPercent
     );
     sendJson(200, response);
 }
@@ -236,16 +263,111 @@ void WebPanel::handleSetDuty()
         return;
     }
 
-    fan_->setDutyPercent(requestedDuty);
+    if (!fan_->setDutyPercent(requestedDuty)) {
+        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        return;
+    }
+    sendStatus();
+}
 
-    char response[48];
-    snprintf(
-        response,
-        sizeof(response),
-        "{\"duty_percent\":%u}",
-        fan_->dutyPercent()
-    );
-    sendJson(200, response);
+void WebPanel::handleSetRpm()
+{
+    recordRequest("POST /api/fan/rpm", true);
+    uint32_t rpm;
+    if (!parseUnsignedArgument("rpm", Config::RpmControl::MAX_RPM, rpm) || rpm < Config::RpmControl::MIN_RPM) {
+        sendJson(400, "{\"error\":\"RPM must be a whole number within min_rpm and max_rpm\"}");
+        return;
+    }
+    if (!fan_->setTargetRpm(rpm)) {
+        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        return;
+    }
+    sendStatus();
+}
+
+void WebPanel::handleSetMode()
+{
+    recordRequest("POST /api/fan/mode", true);
+    if (!server_.hasArg("mode")) {
+        sendJson(400, "{\"error\":\"mode must be duty or rpm\"}");
+        return;
+    }
+    const String mode = server_.arg("mode");
+    if (!(mode == "duty") && !(mode == "rpm")) {
+        sendJson(400, "{\"error\":\"mode must be duty or rpm\"}");
+        return;
+    }
+    if (!fan_->setMode(mode == "rpm" ? FanMode::Rpm : FanMode::Duty)) {
+        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        return;
+    }
+    sendStatus();
+}
+
+void WebPanel::handleThermalMode()
+{
+    recordRequest("POST /api/thermal/mode", true);
+    uint32_t enabled;
+    if (!parseUnsignedArgument("enabled", 1, enabled)) {
+        sendJson(400, "{\"error\":\"enabled must be 0 or 1\"}");
+        return;
+    }
+    if (!fan_->setThermalEnabled(enabled != 0)) {
+        sendJson(409, "{\"error\":\"A fresh temperature reading is required to enable THERMAL\"}");
+        return;
+    }
+    sendStatus();
+}
+
+bool WebPanel::parseTemperature(const char *name, uint16_t &result) const
+{
+    if (!server_.hasArg(name)) return false;
+    const String input = server_.arg(name);
+    if (!input.length()) return false;
+    uint32_t whole = 0, fraction = 0;
+    bool decimal = false;
+    for (size_t i = 0; i < input.length(); ++i) {
+        const char c = input.charAt(i);
+        if (c == '.') {
+            if (decimal || i == 0 || i + 2 != input.length()) return false;
+            decimal = true;
+        } else {
+            if (c < '0' || c > '9') return false;
+            if (decimal) fraction = c - '0';
+            else {
+                whole = whole * 10 + c - '0';
+                if (whole > 95) return false; // Bound before any possible overflow.
+            }
+        }
+    }
+    const uint32_t value = whole * 10 + fraction;
+    if (value < Config::Thermal::MIN_TEMPERATURE_DECI_C ||
+        value > Config::Thermal::MAX_TEMPERATURE_DECI_C) return false;
+    result = static_cast<uint16_t>(value);
+    return true;
+}
+
+void WebPanel::handleThermalCurve()
+{
+    recordRequest("POST /api/thermal/curve", true);
+    ThermalCurve curve;
+    for (size_t i = 0; i < 3; ++i) {
+        char temperatureName[] = "t1", dutyName[] = "d1";
+        temperatureName[1] += i;
+        dutyName[1] += i;
+        uint32_t duty;
+        if (!parseTemperature(temperatureName, curve.points[i].temperatureDeciC) ||
+            !parseUnsignedArgument(dutyName, 100, duty)) {
+            sendJson(400, "{\"error\":\"Use temperatures 15.0-95.0 C with at most one decimal and whole duty 0-100\"}");
+            return;
+        }
+        curve.points[i].dutyPercent = static_cast<uint8_t>(duty);
+    }
+    if (!fan_->setThermalCurve(curve)) {
+        sendJson(400, "{\"error\":\"Temperatures must strictly increase; duty must not decrease\"}");
+        return;
+    }
+    sendStatus();
 }
 
 void WebPanel::handleNotFound()
@@ -275,28 +397,38 @@ void WebPanel::sendJson(int statusCode, const char *body)
 
 bool WebPanel::parseDutyArgument(uint8_t &dutyResult) const
 {
-    if (!server_.hasArg("duty")) {
+    uint32_t value;
+    if (!parseUnsignedArgument("duty", 100, value)) return false;
+    dutyResult = static_cast<uint8_t>(value);
+    return true;
+}
+
+bool WebPanel::parseUnsignedArgument(const char *name, uint32_t maximum, uint32_t &result) const
+{
+    if (!server_.hasArg(name)) {
         return false;
     }
 
-    const String input = server_.arg("duty");
+    const String input = server_.arg(name);
     if (input.length() == 0) {
         return false;
     }
 
-    uint16_t parsedValue = 0;
+    uint32_t parsedValue = 0;
     for (size_t index = 0; index < input.length(); index++) {
         const char character = input.charAt(index);
         if (character < '0' || character > '9') {
             return false;
         }
 
-        parsedValue = parsedValue * 10 + (character - '0');
-        if (parsedValue > 100) {
+        const uint32_t digit = character - '0';
+        if (parsedValue > maximum / 10 ||
+            (parsedValue == maximum / 10 && digit > maximum % 10)) {
             return false;
         }
+        parsedValue = parsedValue * 10 + digit;
     }
 
-    dutyResult = static_cast<uint8_t>(parsedValue);
+    result = parsedValue;
     return true;
 }

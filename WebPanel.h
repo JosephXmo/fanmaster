@@ -22,6 +22,12 @@ private:
     void handleRoot();
     void handleStatus();
     void handleSetDuty();
+    void handleSetRpm();
+    void handleSetMode();
+    void handleThermalMode();
+    void handleThermalCurve();
+    void sendStatus();
+    bool parseTemperature(const char *name, uint16_t &result) const;
     void handleProvision();
     void handleWifiStatus();
     void handleSetup();
@@ -29,6 +35,7 @@ private:
     void handleNotFound();
     void sendJson(int statusCode, const char *body);
     bool parseDutyArgument(uint8_t &dutyResult) const;
+    bool parseUnsignedArgument(const char *name, uint32_t maximum, uint32_t &result) const;
 
     WebServer server_;
     FanController *fan_ = nullptr;

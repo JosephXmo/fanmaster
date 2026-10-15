@@ -26,6 +26,7 @@
     <main class="grid">
       <section class="card telemetry" aria-labelledby="telemetryTitle">
         <div id="telemetryTitle" class="section-label">Live shaft telemetry</div>
+        <p id="controlMode" class="control-copy" role="status">Reading control mode…</p>
         <div class="rpm-stage">
           <div id="rotor" class="rotor" aria-hidden="true"></div>
           <div>
@@ -51,9 +52,9 @@
       </section>
 
       <aside class="card control" aria-labelledby="controlTitle">
-        <div class="section-label">Manual override</div>
-        <h2 id="controlTitle">Set fan duty</h2>
-        <p class="control-copy">Choose an exact PWM duty cycle. The new value is applied only after submission.</p>
+        <div class="section-label">Fan control</div>
+        <h2 id="controlTitle">Choose a setting</h2>
+        <p class="control-copy">Apply manual duty or a fixed RPM target. Each submission selects its control mode.</p>
 
         <form id="dutyForm" novalidate>
           <label for="duty">Duty cycle</label>
@@ -61,10 +62,62 @@
             <input id="duty" name="duty" type="number" min="0" max="100" step="1" inputmode="numeric" required>
             <span class="percent">%</span>
           </div>
-          <button id="applyButton" type="submit">Apply fan setting</button>
+          <button id="applyButton" type="submit">Apply manual duty</button>
+        </form>
+        <form id="rpmForm" novalidate>
+          <label for="targetRpm">Fixed speed target</label>
+          <div class="input-wrap">
+            <input id="targetRpm" name="rpm" type="number" step="1" inputmode="numeric" required>
+            <span class="percent">RPM</span>
+          </div>
+          <button id="applyRpmButton" type="submit" disabled>Hold target RPM</button>
         </form>
         <p id="formMessage" class="form-message" role="status" aria-live="polite">Waiting for controller status.</p>
       </aside>
+
+      <section class="card thermal" aria-labelledby="thermalTitle">
+        <div class="thermal-heading">
+          <div><div class="section-label">Temperature control</div><h2 id="thermalTitle">Three-point fan curve</h2></div>
+          <button id="thermalToggle" type="button" aria-pressed="false" disabled>Enable temperature control</button>
+        </div>
+        <p id="thermalState" class="control-copy" role="status">Waiting for controller status.</p>
+        <div class="thermal-body">
+          <div class="thermal-chart">
+            <svg id="thermalPreview" viewBox="0 0 480 220" role="img" aria-label="Preview of temperature versus fan duty. Flat outside the first and last points.">
+              <path class="chart-grid" d="M40 30H440 M40 105H440 M40 180H440 M40 30V180 M240 30V180 M440 30V180"/>
+              <text x="4" y="34">100%</text><text x="12" y="109">50%</text><text x="18" y="184">0%</text>
+              <text x="28" y="207">15°C</text><text x="226" y="207">55°C</text><text x="426" y="207">95°C</text>
+              <polyline id="thermalLine" fill="none"/>
+              <circle id="thermalDot1" r="5"/><circle id="thermalDot2" r="5"/><circle id="thermalDot3" r="5"/>
+            </svg>
+            <p class="control-copy">Between points, duty follows a straight line. Outside them, duty holds at the nearest endpoint.</p>
+          </div>
+          <form id="thermalForm" novalidate>
+            <div class="thermal-points">
+              <fieldset><legend>Low point</legend>
+                <label for="thermalT1">Temperature (°C)</label>
+                <input id="thermalT1" type="number" min="15" max="95" step="0.1" inputmode="decimal" required disabled>
+                <label for="thermalD1">Duty (%)</label>
+                <input id="thermalD1" type="number" min="0" max="100" step="1" inputmode="numeric" required disabled>
+              </fieldset>
+              <fieldset><legend>Middle point</legend>
+                <label for="thermalT2">Temperature (°C)</label>
+                <input id="thermalT2" type="number" min="15" max="95" step="0.1" inputmode="decimal" required disabled>
+                <label for="thermalD2">Duty (%)</label>
+                <input id="thermalD2" type="number" min="0" max="100" step="1" inputmode="numeric" required disabled>
+              </fieldset>
+              <fieldset><legend>High point</legend>
+                <label for="thermalT3">Temperature (°C)</label>
+                <input id="thermalT3" type="number" min="15" max="95" step="0.1" inputmode="decimal" required disabled>
+                <label for="thermalD3">Duty (%)</label>
+                <input id="thermalD3" type="number" min="0" max="100" step="1" inputmode="numeric" required disabled>
+              </fieldset>
+            </div>
+            <button id="saveThermal" type="submit" disabled>Save temperature curve</button>
+            <p id="thermalMessage" class="form-message" role="status" aria-live="polite">Edit three points from 15–95°C. Press button 3 on the device to exit THERMAL.</p>
+          </form>
+        </div>
+      </section>
     </main>
 
     <footer>
@@ -74,5 +127,6 @@
   </div>
 
   <script src="/assets/panel.js" defer></script>
+  <script src="/assets/thermal.js" defer></script>
 </body>
 </html>

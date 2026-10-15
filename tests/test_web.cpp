@@ -41,6 +41,25 @@ int main(int argc, char **argv)
     server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"duty_percent\":100") != std::string::npos);
     assert(server.socket.body.find("\"poll_interval_ms\":1000") != std::string::npos);
+    assert(server.socket.body.find("\"mode\":\"duty\"") != std::string::npos);
+    server.request("/api/fan/rpm", HTTP_POST, {{"rpm", "850"}});
+    assert(server.status == 200 && fan.snapshot().mode == FanMode::Rpm);
+    for (const char *invalid : {"0", "549", "1701", "850.5", "-850", "", "4294968146"}) {
+        server.request("/api/fan/rpm", HTTP_POST, {{"rpm", invalid}});
+        assert(server.status == 400 && fan.snapshot().targetRpm == 850);
+    }
+    server.request("/api/status", HTTP_GET);
+    assert(server.socket.body.find("\"target_rpm\":850") != std::string::npos);
+    assert(server.socket.body.find("\"manual_duty_percent\":100") != std::string::npos);
+    server.request("/api/fan/mode", HTTP_POST, {{"mode", "invalid"}});
+    assert(server.status == 400 && fan.snapshot().mode == FanMode::Rpm);
+    server.request("/api/fan/mode", HTTP_POST, {{"mode", "duty"}});
+    assert(server.status == 200 && fan.dutyPercent() == 100);
+    server.request("/api/fan/mode", HTTP_POST, {{"mode", "rpm"}});
+    assert(server.status == 200 && fan.snapshot().mode == FanMode::Rpm);
+    server.request("/api/fan/duty", HTTP_POST, {{"duty", "100"}});
+    assert(server.status == 200 && fan.snapshot().mode == FanMode::Duty);
+    server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"temperature_c\":null") != std::string::npos);
     climate.publish({true, 24.6f, 52.1f});
     server.request("/api/status", HTTP_GET);
@@ -50,6 +69,42 @@ int main(int argc, char **argv)
     server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"temperature_c\":null") != std::string::npos);
     assert(server.socket.body.find("\"humidity_percent\":null") != std::string::npos);
+    server.request("/api/thermal/mode", HTTP_POST, {{"enabled", "1"}});
+    assert(server.status == 409 && fan.snapshot().mode == FanMode::Duty);
+    fan.updateTemperature({true, 32.5f, 50, millis()});
+    server.request("/api/thermal/mode", HTTP_POST, {{"enabled", "1"}});
+    assert(server.status == 200 && fan.dutyPercent() == 50);
+    assert(server.socket.body.find("\"mode\":\"thermal\"") != std::string::npos);
+    assert(server.socket.body.find("\"thermal_points\":[") != std::string::npos);
+    assert(server.socket.body.back() == '}'); // Full status fits response buffer.
+    server.request("/api/fan/duty", HTTP_POST, {{"duty", "20"}}); assert(server.status == 409);
+    server.request("/api/fan/rpm", HTTP_POST, {{"rpm", "900"}}); assert(server.status == 409);
+    server.request("/api/fan/mode", HTTP_POST, {{"mode", "duty"}}); assert(server.status == 409);
+    const std::map<std::string, String> curve = {{"t1", "25.1"}, {"d1", "35"},
+        {"t2", "40.2"}, {"d2", "65"}, {"t3", "80.3"}, {"d3", "90"}};
+    for (const char *invalid : {"", "14.9", "95.1", "25.11", "25.", ".5", "-25", "1e2", "4294967321", "40.2"}) {
+        auto args = curve; args["t1"] = invalid;
+        server.request("/api/thermal/curve", HTTP_POST, args);
+        assert(server.status == 400 && fan.snapshot().thermalCurve == ThermalCurve{});
+    }
+    for (const char *invalid : {"34", "65.1", "101", "-1", "4294967361"}) {
+        auto args = curve; args["d2"] = invalid;
+        server.request("/api/thermal/curve", HTTP_POST, args);
+        assert(server.status == 400 && fan.snapshot().thermalCurve == ThermalCurve{});
+    }
+    auto missing = curve; missing.erase("t2");
+    server.request("/api/thermal/curve", HTTP_POST, missing); assert(server.status == 400);
+    server.request("/api/thermal/curve", HTTP_POST, curve);
+    assert(server.status == 200 && fan.snapshot().thermalCurve.points[0].temperatureDeciC == 251);
+    server.request("/api/thermal/mode", HTTP_POST, {{"enabled", "0"}});
+    assert(server.status == 200 && fan.snapshot().mode == FanMode::Duty && fan.dutyPercent() == 100);
+    server.request("/api/thermal/mode", HTTP_POST, {{"enabled", "2"}}); assert(server.status == 400);
+    server.request("/api/thermal/mode", HTTP_POST); assert(server.status == 400);
+    fan.setThermalEnabled(true);
+    fan.toggleMode(); // Local exit is reflected in the next web poll.
+    server.request("/api/status", HTTP_GET);
+    assert(server.socket.body.find("\"mode\":\"duty\"") != std::string::npos);
+    assert(server.socket.body.find("\"thermal_exit_reason\":\"manual\"") != std::string::npos);
     server.request("/api/wifi/configure", HTTP_POST, {{"ssid", "home"}, {"password", "password"}}, false);
     assert(server.status == 403 && !wifi.isProvisioning());
     server.request("/api/wifi/configure", HTTP_POST, {{"ssid", "home"}, {"password", "short"}});

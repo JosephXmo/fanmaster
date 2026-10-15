@@ -285,3 +285,12 @@ NVS failures, HTTP routing and streaming, recovery form, and interrupted uploade
 commits using in-memory peripheral substitutes. The JavaScript checks cover
 submission, stale responses, channel-change retries and terminal results.
 They do not establish successful SPI or Wi-Fi operation on the ESP32.
+
+## Updating the temperature-control panel
+
+The three-point THERMAL widget adds `/assets/thermal.js` to the external image
+(seven resources total). Repack and upload the complete image and rebuild/flash
+the main application using the existing sequence above on each host OS. The
+uploader firmware and protocol are unchanged. Update assets and firmware
+together, then reload the panel. See [THERMAL_CONTROL.md](THERMAL_CONTROL.md) for
+mode restoration, sensor fallback, NVS migration and acceptance checks.

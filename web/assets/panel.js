@@ -1,130 +1,122 @@
-    (() => {
-      "use strict";
-
-      let pollIntervalMs = 1000;
-      const connection = document.getElementById("connection");
-      const connectionText = document.getElementById("connectionText");
-      const rpm = document.getElementById("rpm");
-      const rotor = document.getElementById("rotor");
-      const currentDuty = document.getElementById("currentDuty");
-      const temperature = document.getElementById("temperature");
-      const humidity = document.getElementById("humidity");
-      const lastUpdated = document.getElementById("lastUpdated");
-      const form = document.getElementById("dutyForm");
-      const dutyInput = document.getElementById("duty");
-      const applyButton = document.getElementById("applyButton");
-      const formMessage = document.getElementById("formMessage");
-      let dutyIsBeingEdited = false;
-      let statusReceived = false;
-      let statusErrorVisible = false;
-
-      function setConnectionState(online) {
-        connection.classList.toggle("online", online);
-        connectionText.textContent = online ? "Controller online" : "Controller unavailable";
-      }
-
-      function showMessage(message, isError = false) {
-        formMessage.textContent = message;
-        formMessage.classList.toggle("error", isError);
-      }
-
-      function showOptionalReading(element, value, suffix) {
-        element.textContent = value === null || value === undefined ? "--" : `${value}${suffix}`;
-      }
-
-      async function requestJson(url, options = {}) {
-        const response = await fetch(url, { cache: "no-store", ...options });
-        let body;
-
-        try {
-          body = await response.json();
-        } catch (_) {
-          throw new Error(`Controller returned HTTP ${response.status}`);
-        }
-
-        if (!response.ok) {
-          throw new Error(body.error || `Controller returned HTTP ${response.status}`);
-        }
-
-        return body;
-      }
-
-      async function refreshStatus() {
-        try {
-          const state = await requestJson("/api/status");
-          const interval = Number(state.poll_interval_ms);
-          if (Number.isFinite(interval) && interval > 0) pollIntervalMs = interval;
-          const roundedRpm = Math.max(0, Math.round(Number(state.rpm) || 0));
-
-          rpm.textContent = String(roundedRpm);
-          currentDuty.textContent = `${state.duty_percent}%`;
-          showOptionalReading(temperature, state.temperature_c, "\u00b0C");
-          showOptionalReading(humidity, state.humidity_percent, "%");
-
-          rotor.classList.toggle("spinning", roundedRpm > 0);
-          rotor.style.animationDuration = `${Math.max(.3, Math.min(2.4, 1800 / Math.max(roundedRpm, 1)))}s`;
-
-          if (!dutyIsBeingEdited) {
-            dutyInput.value = state.duty_percent;
-          }
-
-          setConnectionState(Boolean(state.wifi_connected));
-          lastUpdated.textContent = `Telemetry updated ${new Date().toLocaleTimeString()}`;
-
-          if (!statusReceived || statusErrorVisible) {
-            showMessage("Controller ready. Choose a duty cycle when needed.");
-          }
-          statusReceived = true;
-          statusErrorVisible = false;
-        } catch (error) {
-          setConnectionState(false);
-          lastUpdated.textContent = "Telemetry request failed";
-          showMessage(error.message, true);
-          statusErrorVisible = true;
-        }
-      }
-
-      async function pollStatus() {
-        await refreshStatus();
-        window.setTimeout(pollStatus, pollIntervalMs);
-      }
-
-      dutyInput.addEventListener("input", () => {
-        dutyIsBeingEdited = true;
+(() => {
+  "use strict";
+  const el = id => document.getElementById(id);
+  let pollIntervalMs = 1000, state = null, busy = false, epoch = 0;
+  let dutyEdited = false, rpmEdited = false;
+  const listeners = [];
+  function message(text, error = false) {
+    el('formMessage').textContent = text;
+    el('formMessage').classList.toggle('error', error);
+  }
+  function controls() {
+    const locked = busy || !state || state.mode === 'thermal';
+    el('duty').disabled = el('targetRpm').disabled = el('applyButton').disabled = locked;
+    el('applyRpmButton').disabled = locked || !Number.isInteger(state?.min_rpm);
+    listeners.forEach(fn => fn(state, busy));
+  }
+  function accept(next) {
+    if (!state || state.mode !== next.mode) {
+      message(next.mode === 'thermal' ? 'Fixed controls are paused during THERMAL.' : 'Controller ready. Choose manual duty or fixed RPM.');
+    }
+    state = next;
+    const speed = Math.max(0, Math.round(Number(state.rpm) || 0));
+    el('rpm').textContent = String(speed);
+    el('currentDuty').textContent = `${state.duty_percent}%`;
+    el('controlMode').textContent = state.mode === 'thermal' ? 'THERMAL · Temperature curve active'
+      : state.mode === 'rpm' ? `RPM control · Target ${state.target_rpm} RPM` : 'Manual duty control';
+    if (!dutyEdited) el('duty').value = state.manual_duty_percent ?? state.duty_percent;
+    if (!rpmEdited) el('targetRpm').value = state.target_rpm ?? '';
+    el('targetRpm').min = state.min_rpm;
+    el('targetRpm').max = state.max_rpm;
+    el('temperature').textContent = state.temperature_c == null ? '--' : `${state.temperature_c}°C`;
+    el('humidity').textContent = state.humidity_percent == null ? '--' : `${state.humidity_percent}%`;
+    el('rotor').classList.toggle('spinning', speed > 0);
+    el('rotor').style.animationDuration = `${Math.max(.3, Math.min(2.4, 1800 / Math.max(speed, 1)))}s`;
+    el('connection').classList.toggle('online', Boolean(state.wifi_connected));
+    el('connectionText').textContent = state.wifi_connected ? 'Controller online' : 'Controller unavailable';
+    el('lastUpdated').textContent = `Telemetry updated ${new Date().toLocaleTimeString()}`;
+    controls();
+  }
+  async function requestJson(url, options = {}) {
+    const response = await fetch(url, { cache: 'no-store', ...options });
+    let body;
+    try { body = await response.json(); }
+    catch (_) { throw new Error(`Controller returned HTTP ${response.status}`); }
+    if (!response.ok) throw new Error(body.error || `Controller returned HTTP ${response.status}`);
+    return body;
+  }
+  async function refresh() {
+    if (busy) return;
+    const requestEpoch = epoch;
+    try {
+      const next = await requestJson('/api/status');
+      if (requestEpoch !== epoch) return; // A control command superseded this poll.
+      const interval = Number(next.poll_interval_ms);
+      if (Number.isFinite(interval) && interval > 0) pollIntervalMs = interval;
+      accept(next);
+    } catch (error) {
+      if (requestEpoch !== epoch) return;
+      el('connection').classList.toggle('online', false);
+      el('connectionText').textContent = 'Controller unavailable';
+      el('lastUpdated').textContent = 'Telemetry request failed';
+      message(error.message, true);
+    }
+  }
+  async function command(url, values, onSuccess = () => {}) {
+    if (busy) throw new Error('Another setting is being applied. Please wait.');
+    busy = true;
+    ++epoch;
+    controls();
+    try {
+      const next = await requestJson(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: new URLSearchParams(values),
       });
-
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const requestedDuty = Number(dutyInput.value);
-
-        if (!Number.isInteger(requestedDuty) || requestedDuty < 0 || requestedDuty > 100) {
-          showMessage("Enter a whole number from 0 through 100.", true);
-          dutyInput.focus();
-          return;
-        }
-
-        applyButton.disabled = true;
-        showMessage("Applying new fan setting...");
-
-        try {
-          const body = new URLSearchParams({ duty: String(requestedDuty) });
-          const result = await requestJson("/api/fan/duty", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-            body,
-          });
-
-          dutyIsBeingEdited = false;
-          dutyInput.value = result.duty_percent;
-          currentDuty.textContent = `${result.duty_percent}%`;
-          showMessage(`Fan duty set to ${result.duty_percent}%.`);
-          await refreshStatus();
-        } catch (error) {
-          showMessage(error.message, true);
-        } finally {
-          applyButton.disabled = false;
-        }
-      });
-
-      pollStatus();
-    })();
+      onSuccess();
+      accept(next);
+      return next;
+    } finally {
+      ++epoch;
+      busy = false;
+      controls();
+    }
+  }
+  // Both widgets share one poller, command lock and authoritative state.
+  window.fanmaster = {
+    command,
+    subscribe(fn) { listeners.push(fn); fn(state, busy); },
+  };
+  el('duty').addEventListener('input', () => { dutyEdited = true; });
+  el('targetRpm').addEventListener('input', () => { rpmEdited = true; });
+  el('rpmForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy || !state || state.mode === 'thermal') return;
+    const input = el('targetRpm'), target = Number(input.value);
+    if (!input.value.trim() || !Number.isInteger(target) || target < state.min_rpm || target > state.max_rpm) {
+      message(`Enter a whole RPM from ${state.min_rpm} through ${state.max_rpm}.`, true);
+      input.focus(); return;
+    }
+    try {
+      await command('/api/fan/rpm', { rpm: String(target) }, () => { rpmEdited = false; });
+      message(`Holding target ${target} RPM.`);
+    } catch (error) { message(error.message, true); }
+  });
+  el('dutyForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy || !state || state.mode === 'thermal') return;
+    const input = el('duty'), duty = Number(input.value);
+    if (!input.value.trim() || !Number.isInteger(duty) || duty < 0 || duty > 100) {
+      message('Enter a whole number from 0 through 100.', true); input.focus(); return;
+    }
+    try {
+      await command('/api/fan/duty', { duty: String(duty) }, () => { dutyEdited = false; });
+      message(`Fan duty set to ${duty}%.`);
+    } catch (error) { message(error.message, true); }
+  });
+  async function poll() {
+    await refresh();
+    window.setTimeout(poll, pollIntervalMs);
+  }
+  controls();
+  poll();
+})();

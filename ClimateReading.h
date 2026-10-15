@@ -1,10 +1,12 @@
 #pragma once
 #include <mutex>
+#include <cstdint>
 
 struct ClimateSample {
     bool valid = false;
     float temperatureC = 0.0f;
     float humidityPercent = 0.0f;
+    uint32_t sampledAtMs = 0;
 };
 
 // HTTP runs on another task. Publish/read the whole sample coherently, without

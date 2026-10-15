@@ -1,6 +1,7 @@
 #include "SerialConsole.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "FanController.h"
 
@@ -42,6 +43,26 @@ void SerialConsole::processCommand(FanController &fan)
         return;
     }
 
+    if (strcmp(input, "mode duty") == 0 || strcmp(input, "mode rpm") == 0) {
+        const bool changed = fan.setMode(strcmp(input, "mode rpm") == 0 ? FanMode::Rpm : FanMode::Duty);
+        Serial.println(changed ? "Control mode updated." : "Ignored: exit THERMAL first.");
+        return;
+    }
+    if (strncmp(input, "rpm ", 4) == 0) {
+        char *end = nullptr;
+        const char *number = trim(input + 4);
+        const unsigned long rpm = strtoul(number, &end, 10);
+        if (*number < '0' || *number > '9' || *end ||
+            rpm > Config::RpmControl::MAX_RPM || rpm < Config::RpmControl::MIN_RPM) {
+            Serial.println("Ignored: RPM must be a whole number within Config limits.");
+        } else if (!fan.setTargetRpm(static_cast<uint32_t>(rpm))) {
+            Serial.println("Ignored: exit THERMAL first.");
+        } else {
+            Serial.println("RPM target updated; RPM control active.");
+        }
+        return;
+    }
+
     char *parseEnd = nullptr;
     const long requestedDuty = strtol(input, &parseEnd, 10);
 
@@ -55,7 +76,10 @@ void SerialConsole::processCommand(FanController &fan)
         return;
     }
 
-    fan.setDutyPercent(static_cast<uint8_t>(requestedDuty));
+    if (!fan.setDutyPercent(static_cast<uint8_t>(requestedDuty))) {
+        Serial.println("Ignored: exit THERMAL first.");
+        return;
+    }
 
     if (!Config::SerialConsole::PLOTTER_MODE) {
         Serial.println("Duty cycle updated.");

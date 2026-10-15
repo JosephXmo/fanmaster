@@ -12,6 +12,7 @@ All values are in `Config.h`; no wiring changes are needed.
 
 | Config value | Default | Meaning |
 | --- | --- | --- |
+| `Fan::MAX_VALID_RPM` | 4000 | Reject implausible completed TACH windows |
 | `RpmControl::MIN_RPM` / `MAX_RPM` | 550 / 1700 | Inclusive allowed target range |
 | `RpmControl::DEFAULT_RPM` | 850 | Initial target without a valid saved record |
 | `Buttons::RPM_STEP` / `MODIFIED_RPM_STEP` | 100 / 10 | Normal / function-key RPM increment |
@@ -33,6 +34,16 @@ approximately 30 RPM quantization. Fine target increments do not imply 10 RPM
 measurement accuracy.
 
 ## Feedback and smoothing
+
+Only a newly completed, plausible TACH sample advances the regulator.
+A non-finite sample or measured speed above `Fan::MAX_VALID_RPM` is rejected;
+the pulse window is consumed/reset, while the cached RPM, PWM, filter and PI
+integral remain unchanged. The next valid window resumes feedback. Zero remains
+a valid sample. Choose the ceiling above the actual fan maximum and target
+range. This guards gross pulse-count transients; it is not edge debouncing,
+electrical noise suppression, or detection of every erroneous reading below
+the ceiling. The shared-peripheral power test exposed this need; see the
+THERMAL acceptance section of `HARDWARE_TEST_REPORT.md`.
 
 Only a newly completed TACH sample advances the regulator. Network reads, LED
 updates and OLED refreshes never run extra feedback steps. The raw cached RPM
@@ -91,7 +102,7 @@ a mode exit or before its queued save completes can lose that latest setting.
 - Serial: `rpm 850`, `mode rpm`, `mode duty`; a plain 0–100 number selects Duty.
 - OLED: measured RPM on the large line; manual mode or RPM target on the duty line.
 
-Rebuild the application and repack/re-upload the six-file external asset image
+Rebuild the application and repack/re-upload the external asset image
 for the new Web Panel. See `BUILDING.md` and `FLASH_RESOURCES.md`. The uploader's
 code/protocol is unchanged; an older resource image still offers duty control,
 and submitting duty exits RPM mode.
@@ -107,6 +118,15 @@ not measured acceptance of this fan. The fixed-RPM hardware section in
 650/850/1050 RPM step tests, saved settings restored after hardware reset, and
 local-loop behavior during concurrent HTTP requests.
 
-Further acceptance requires a cold power-cycle check, external load-disturbance
+The subsequent THERMAL round verified cold power-cycle persistence and legacy
+record migration. Further acceptance requires external load-disturbance
 recovery, independent speed calibration, and characterization of the configured
 550/1700 RPM endpoints. The recorded tests used the default feedback gains.
+
+## Temperature override
+
+The independent THERMAL widget temporarily suspends fixed control and restores
+its preceding mode/settings on exit. While active, fixed commands are rejected
+and button 3 exits only the override. Curve persistence extends the same NVS
+record while retaining FMO1 preset compatibility. See
+[THERMAL_CONTROL.md](THERMAL_CONTROL.md) for the full contract and deployment.

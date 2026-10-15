@@ -3,7 +3,8 @@
 #include "ButtonInputs.h"
 
 struct ButtonActions {
-    int16_t dutyDelta = 0;
+    int8_t direction = 0;
+    bool fine = false;
     bool toggleLed = false;
     bool modeSwitchRequested = false;
 };
@@ -20,9 +21,8 @@ public:
         // Opposing held buttons cancel even when their repeat timers differ.
         if (increase != decrease &&
             !(buttons.isPressed(ButtonId::Button1) && buttons.isPressed(ButtonId::Button2))) {
-            const uint8_t step = function ? Config::Buttons::MODIFIED_DUTY_STEP_PERCENT
-                                          : Config::Buttons::DUTY_STEP_PERCENT;
-            actions.dutyDelta = increase ? step : -step;
+            actions.direction = increase ? 1 : -1;
+            actions.fine = function;
         }
         if (buttons.wasPressed(ButtonId::Button3)) button3Chord_ = false;
         if (buttons.isPressed(ButtonId::Button3) && function && !button3Chord_) {

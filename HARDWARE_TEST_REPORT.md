@@ -259,3 +259,186 @@ running. The configured
 steady physical speeds were not characterized. A cold power-cycle check,
 independent speed calibration and external load-disturbance recovery remain
 unmeasured.
+
+## Three-point THERMAL hardware acceptance — 2026-10-15
+
+### Firmware, resources and host checks
+
+- Host: macOS / Arduino CLI 1.5.1 / ESP32 Arduino core 3.3.12.
+- Target: the connected Waveshare ESP32-S3-Zero, ESP32-S3 QFN56 revision 0.2,
+  4 MiB internal flash and 2 MiB PSRAM. USB reenumerated from
+  `/dev/cu.usbmodem101` to `/dev/cu.usbmodem1101` during preparation; the latter
+  was used for this test. The monitor-device serial port was not used.
+- FQBN: `esp32:esp32:esp32s3:CDCOnBoot=cdc`. Main application:
+  1,036,139 program bytes / 51,004 static RAM bytes before the outlier fix;
+  final build 1,036,335 / 51,004. The staged source files
+  matched this checkout before flashing, and the application SHA256 matched
+  its build manifest.
+- Reused the previously verified resource uploader, then flashed the new main
+  application. esptool verified both images. No full-chip erase was performed.
+- The seven-resource W25Q64 image is 34,340 bytes, whole-image CRC32 `ca141fbb`.
+  Upload returned `DONE verified`. The user confirmed waiting screen, live
+  progress and final `Done verified / 100%` on the OLED.
+- All seven static resources, plus `/` against `web/index.html`, subsequently
+  matched source bytes over actual device HTTP. Wi-Fi reconnected using the
+  existing NVS credentials at `192.168.30.215`.
+- The host Python/C++ suites and all three Node.js suites (setup, fixed panel,
+  thermal widget) passed again. The later peripheral power fault test exposed gross TACH noise, fixed and
+  retested as described below.
+
+### Curve and HTTP behavior
+
+Actual SHT30 samples drove each output. The curves were deliberately moved
+around room temperature to exercise both clamps and both interpolation
+segments without requiring the hardware to reach 15°C or 95°C. Each phase
+contains eight status samples, spaced about one second apart.
+
+| Phase | Curve (temperature °C / duty %) | Measured °C | Applied duty | Result |
+| --- | --- | --- | --- | --- |
+| Low hold | 30/35, 50/65, 80/90 | 25.8–26.4 | 35% | Held first duty |
+| First segment | 15/20, 35/60, 80/90 | 25.2–25.6 | 40–41% | Linear interpolation |
+| Second segment | 15/20, 20/40, 40/80 | 25.0–25.1 | 50% | Linear interpolation |
+| High hold | 15/20, 16/40, 17/70 | 24.7–24.9 | 70% | Held last duty |
+| Plateau | 15/45, 35/45, 80/90 | 24.6–24.7 | 45% | Equal duty values accepted |
+
+All 40 outputs exactly matched the expected rounded integer duty computed from
+the reported temperature and that phase's curve. These short phases verify
+mapping, not steady-state fan response or temperature calibration.
+
+Malformed/invalid curve submissions returned HTTP 400 and preserved the previous
+curve: extra decimal precision, equal/reversed temperatures, out-of-range
+limits, descending duty, fractional duty, overflow and a missing point field.
+While THERMAL was active, valid fixed-duty, target-RPM and fixed-mode changes
+all returned HTTP 409. Web/API exit restored both a preceding RPM 950 setting
+and a preceding manual 42% setting in separate tests.
+
+Three concurrent clients completed all 30 status requests; the slowest took
+3.3507 seconds. This is a functional concurrency check, not a latency guarantee.
+
+### Local controls, temperature change and sensor failure
+
+The user confirmed on the physical board:
+
+- OLED shows `THERMAL`; fixed web inputs/buttons are disabled.
+- Buttons 1/2, including long holds, do not edit fixed settings in THERMAL.
+- Function + button 3 toggles LED indication without leaving THERMAL.
+- Standalone button 3 exits only the override, restores MANUAL 35%, and the web
+  toggle/fixed controls follow that change.
+- During a physical temperature-change exercise, OLED, web telemetry and fan
+  remained responsive. Recorded temperature rose from 24.8°C to 48.7°C and
+  subsequently fell. With the default curve, duty rose from 35% to 70%; the
+  48.7°C sample agrees with the second segment. There were 92 samples in the
+  bounded warming record; its last sample was 26.7°C / 38%.
+
+The first attempted sensor disconnect was invalidated by accidental contact
+with other wiring and unintended button events. It is excluded from acceptance.
+The clean retry removed the shared 3.3 V peripheral supply (SHT30, OLED and
+W25Q64), without touching buttons/web controls. The mode changed from THERMAL
+to RPM 650, preserving the 35% manual preset. Temperature/humidity became null,
+then recovered after reconnection; fixed control remained selected. The user
+confirmed sensor and OLED recovery. That test did not separately establish an
+isolated SHT30-only outage or electrical disconnect-to-reaction timing.
+
+### Fault discovered and corrected
+
+The first clean shared-power test exposed an implausible TACH sample of
+1,995,847 RPM that could perturb the PI regulator, despite correct mode fallback.
+The final firmware adds `Config::Fan::MAX_VALID_RPM=4000`. A non-finite or
+above-ceiling completed sample resets/advances the counter window but preserves
+the cached RPM, output, filter and integral. Subsequent valid windows resume
+feedback. Host regression explicitly injects a noisy pulse window, checks the
+unchanged state, then verifies normal-window and zero-RPM recovery.
+
+After compiling/flashing the correction with hash verification, the shared
+peripheral power test was repeated. All 18 unavailable-sensor observations were
+in RPM 650 with the manual 35% preset intact. Enabling THERMAL while unavailable
+returned HTTP 409. Recovery retained RPM 650 and `thermal_exit_reason="sensor"`;
+the user again confirmed OLED/climate/fixed recovery. Eleven rejected TACH
+windows were logged, peaking at 2,215,247 RPM before rejection; the outage
+watcher's published RPM never exceeded 840. Rejected windows did not drive the
+PI regulator. This test demonstrates the gross-outlier guard, not elimination
+of electrical noise, edge debouncing, low-level noise rejection below the
+ceiling, or an independent tachometer calibration. I²C timeouts while the entire
+peripheral rail was off still caused local-loop gaps up to 655 ms; after recovery
+reporting windows returned to 28–29 ms. Powering down a connected peripheral rail
+is not a normal operating condition.
+
+### Legacy migration and actual cold boot
+
+To avoid ambiguity from earlier user adjustments, a controlled migration test
+briefly restored the preceding fixed-RPM firmware. It saved distinct 43% manual
+duty and 930 RPM target presets in a legacy FMO1 record. The final THERMAL
+application was then flashed without erasing NVS. It started in Duty 43%, retained
+930 RPM, and supplied the default three-point curve. This verifies the actual
+old-to-new record path on this board, beyond host serialization tests.
+
+Next, the test saved non-default points 25.3°C/37%, 41.2°C/66%, 81.1°C/92% and
+entered THERMAL over RPM 930. The user confirmed complete board power removal
+for about five seconds followed by power restoration. HTTP then reported Duty
+43%, the remembered 930 RPM target and all three non-default points. THERMAL
+was not automatically re-enabled. Existing Wi-Fi credentials reconnected; they
+were neither read out nor intentionally changed. This is a real cold power-cycle
+check, distinct from an esptool reset or reopening the USB serial port.
+
+### Final-image regression
+
+The final application image is 1,036,480 bytes, SHA256
+`9369e762d5fc90274358c2960d374a0646a5a660d10630732e793136e7f8e517`.
+Compiler program usage is 1,036,335 / 1,310,720 bytes; static RAM 51,004 / 327,680.
+Final-image HTTP regression again matched all seven resource payloads and `/`
+against source, rejected invalid curves atomically, rejected all three fixed
+APIs during THERMAL, and restored both RPM 950 and Duty 42 on exit.
+
+Five final-image phases again collected eight samples each:
+
+| Phase | Temperature range | Duty range | Mapping |
+| --- | --- | --- | --- |
+| low_hold | 24.7–24.8°C | 35–35% | Maximum rounded-duty difference 0% |
+| segment_one | 24.7–24.8°C | 39–40% | Maximum rounded-duty difference 0% |
+| segment_two | 24.7–24.8°C | 49–50% | Maximum rounded-duty difference 0% |
+| high_hold | 24.7–24.8°C | 70–70% | Maximum rounded-duty difference 0% |
+| plateau | 24.7–24.8°C | 45–45% | Maximum rounded-duty difference 0% |
+
+All 30 status requests from three concurrent clients completed on the final
+image; the slowest took **6.7245 seconds** while a separate serial/HTTP
+monitor also polled status. The initial-image result was 3.3507 seconds under its
+own run conditions. These results confirm eventual service under that load;
+the synchronous server still queues requests and is not a latency guarantee.
+
+Evidence remains in ignored `build/thermal-acceptance/`: final build/flash logs,
+`initial-automated-results.json`, `automated-results.json`, `warming-results.json`,
+`shared-power-results.json`, `final-power-results.json`, `seed-old.json`,
+`verify-upgrade.json`, `save-curve.json`, `verify-reboot.json`, and the serial/HTTP
+monitor records. Host suites passed after the code correction. Actual browser
+and physical-screen checks are user observations; the local simulated-browser
+render and screenshots do not substitute for target execution.
+
+For exact firmware sections, internal partitions and the external resource
+schema, see [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md). Live NVS page occupancy,
+independent temperature/speed calibration, long-duration reliability, isolated
+SHT30-only power loss, physical endpoints 550/1700 RPM and external load rejection
+remain outside this acceptance. A pre-existing `esp_cache_msync: invalid addr or
+null pointer` line still appears at boot, also present in earlier fixed-RPM logs;
+it has not been diagnosed here. Startup Wi-Fi association/reconnection produced
+initial HTTP timeouts; successful connection and later operation are reported
+separately rather than claiming every request from power-on succeeded.
+
+### Final observation and retained state
+
+A separate final-image observation after the cold-boot check ran for **340.292
+seconds**, with **306 successful status samples**. Two initial 12-second HTTP
+attempts timed out during reconnection; no further HTTP errors were recorded
+after connectivity returned. Serial recorded one initial USB-associated boot,
+no additional startup, and no panic/backtrace/watchdog. Normal local reporting
+windows were about 28–30 ms; the 655 ms maximum coincided with the deliberate
+shared-peripheral outage. The pre-existing cache warning described above was
+still present at startup.
+
+The last 60 status samples averaged **666.5 RPM**, range **630–720 RPM**, with
+applied duty fixed at **28%**. The target remained 650 RPM and the manual preset
+35%; this short observation follows the power fault and is not independent
+speed calibration. Final climate was 24.8°C / 54.3% RH in that monitor. The board
+was left in fixed RPM 650 with default 25/35, 40/65, 80/90 curve, and THERMAL off.
+The failure-exit reason remains `sensor` until the next deliberate activation.
+Serial monitoring was stopped and the port closed. Seven static payloads were
+also checked again after peripheral Flash power recovery.

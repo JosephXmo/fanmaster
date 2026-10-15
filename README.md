@@ -25,7 +25,7 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Adjust duty with buttons 1 and 2 in 5% steps, or 1% while function (button 4) is held.
   Holding an adjustment button repeats after one second, then every 100 ms.
 - Toggle RGB status indication with function + button 3. A standalone button-3
-  click switches between manual duty and fixed RPM control.
+  click switches between manual duty and fixed RPM control, or exits THERMAL.
 - Hold an initially configured 850 RPM target with filtered PI feedback, a
   deadband, PWM slew limiting and anti-windup. RPM buttons step by 100, or 10
   with the function key; range and steps are configurable.
@@ -36,6 +36,10 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Retry station connections without blocking the local firmware loop.
 - Read Web Panel, setup page and static assets from an external W25Q64 through SPIMemory.
 - Serve a responsive Web Panel with live telemetry, manual duty and fixed RPM control.
+- Override fixed control with an independent three-point temperature widget,
+  live curve preview and monotonic 0.1°C / integer-duty editing. Restore the
+  preceding fixed state via its toggle, button 3 or sensor-failure fallback.
+- Save thermal curves under the same operating-memory switch; boot stays in Duty.
 - Expose status and fan-control HTTP API entrypoints.
 
 SHT30 is sampled once per second. OLED and HTTP share the latest cached sample;
@@ -215,9 +219,13 @@ invalid input before changing mode. `POST /api/fan/mode` accepts `mode=duty` or
 `target_rpm`, `manual_duty_percent`, `min_rpm` and `max_rpm`; `duty_percent`
 always means the actual PWM output, including automatic corrections.
 
-The OLED shows `DUTY … MANUAL` or `DUTY … SET <RPM>`. Serial commands `rpm 850`,
+The OLED shows `DUTY … MANUAL`, `DUTY … SET <RPM>`, or `DUTY … THERMAL`. Serial commands `rpm 850`,
 `mode rpm` and `mode duty` supplement the existing 0–100 manual duty command.
 See [RPM_CONTROL.md](RPM_CONTROL.md) for tuning, persistence and validation.
+[THERMAL_CONTROL.md](THERMAL_CONTROL.md) describes the independent temperature
+widget, curve validation/interpolation, local override, sensor-failure policy,
+NVS migration and thermal APIs. Fixed changes return HTTP 409 while THERMAL is
+active. Successful fan/thermal commands return the complete status snapshot.
 The updated Web Panel requires repacking/re-uploading external flash assets as
 well as flashing the main firmware; the resource-uploader firmware is unchanged.
 
@@ -278,7 +286,7 @@ local network and does not initially include authentication or TLS.
 | --- | --- |
 | `fanmaster.ino` | Firmware setup, loop, and module coordination |
 | `Config.h` | Pins, addresses, timing, and user configuration |
-| `FanController.*`, `RpmRegulator.h` | PWM, TACH, mode/setpoint ownership and smoothed PI control |
+| `FanController.*`, `RpmRegulator.h`, `ThermalCurve.h` | PWM, TACH, modes, smoothed PI and three-point temperature control |
 | `OperatingMemory.*` | Versioned, checked NVS setpoint record and deferred writes |
 | `SerialConsole.*` | Non-blocking serial duty commands |
 | `StatusLed.*` | WS2812 control with configurable duty/TACH visual response |
@@ -319,3 +327,15 @@ connected ESP32-S3: selected 650/850/1050 RPM targets, NVS restoration after res
 resource readback and HTTP concurrency. See the fixed-RPM section of
 [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measured response and limits;
 this does not establish the full speed range or recovery under external load.
+
+The final three-point THERMAL revision builds at **1,036,335 program bytes /
+51,004 static RAM bytes**. Its **34,340-byte, seven-resource** image and main
+application have been flashed on the connected ESP32-S3. Actual HTTP curve,
+validation and concurrency checks, user-observed OLED/buttons, temperature-driven
+output, sensor-loss fallback, legacy NVS migration and cold power-cycle
+persistence were exercised. Gross TACH outliers found during peripheral power
+interruption are now rejected before feedback. See
+[THERMAL_CONTROL.md](THERMAL_CONTROL.md) for behavior,
+[HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measured acceptance and
+limits, and [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) for the exact internal Flash
+partition map, firmware section sizes and external SPI resource layout.

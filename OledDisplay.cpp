@@ -37,7 +37,10 @@ void OledDisplay::showStatus(
     const String &version,
     bool hasClimateReading,
     float temperatureC,
-    float humidityPercent
+    float humidityPercent,
+    bool rpmControl,
+    uint32_t targetRpm,
+    bool thermalControl
 )
 {
     if (!ready_) {
@@ -64,7 +67,14 @@ void OledDisplay::showStatus(
     display_.print("DUTY ");
     display_.print(dutyPercent);
     display_.print("%");
-
+    if (thermalControl) {
+        display_.print(" THERMAL");
+    } else if (rpmControl) {
+        display_.print(" SET ");
+        display_.print(targetRpm);
+    } else {
+        display_.print(" MANUAL");
+    }
 
     display_.setCursor(0, 44);
     display_.print("IP   ");

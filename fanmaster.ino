@@ -9,6 +9,7 @@
 #include "FanController.h"
 #include "I2cBus.h"
 #include "OledDisplay.h"
+#include "OperatingMemory.h"
 #include "SerialConsole.h"
 #include "Sht30Sensor.h"
 #include "StatusLed.h"
@@ -18,6 +19,7 @@
 namespace {
 
 FanController fan;
+OperatingMemory operatingMemory;
 I2cBus peripheralBus;
 OledDisplay oled(peripheralBus.wire());
 Sht30Sensor sht30;
@@ -55,7 +57,11 @@ void reportFanState(float rpm)
     Serial.print(rpm, 0);
     Serial.print(" RPM | Duty: ");
     Serial.print(fan.dutyPercent());
-    Serial.println('%');
+    Serial.print("% | Mode: ");
+    const FanSnapshot state = fan.snapshot();
+    Serial.print(state.mode == FanMode::Thermal ? "THERMAL" : state.mode == FanMode::Rpm ? "RPM" : "Duty");
+    Serial.print(" | Target RPM: ");
+    Serial.println(state.targetRpm);
 }
 
 void reportButtonEvents()
@@ -80,16 +86,13 @@ void reportButtonEvents()
 void applyButtonActions()
 {
     const ButtonActions actions = buttonControls.update(buttons);
-    if (actions.dutyDelta) {
-        int16_t nextDuty = fan.dutyPercent() + actions.dutyDelta;
-        if (nextDuty < 0) nextDuty = 0;
-        if (nextDuty > 100) nextDuty = 100;
-        fan.setDutyPercent(static_cast<uint8_t>(nextDuty));
-    }
+    if (actions.direction) fan.adjustSetting(actions.direction, actions.fine);
     if (actions.toggleLed) statusLed.toggleEnabled();
-    // Reserved event only: RPM closed-loop control will be implemented later.
-    if (actions.modeSwitchRequested && !Config::SerialConsole::PLOTTER_MODE) {
-        Serial.println("[BUTTON] mode switch requested; duty control remains active (RPM control pending)");
+    if (actions.modeSwitchRequested) {
+        fan.toggleMode();
+        if (!Config::SerialConsole::PLOTTER_MODE) {
+            Serial.println(fan.snapshot().mode == FanMode::Rpm ? "[BUTTON] RPM control" : "[BUTTON] duty control");
+        }
     }
 }
 
@@ -106,15 +109,19 @@ void updateOled()
 
     lastOledRefreshMs = now;
     const ClimateSample sample = climate.snapshot();
+    const FanSnapshot state = fan.snapshot();
     oled.showStatus(
-        fan.currentRpm(),
-        fan.dutyPercent(),
+        state.rpm,
+        state.appliedDutyPercent,
         wifiStation.isConnected(),
         wifiStation.localIp(),
         Config::VERSION,
         sample.valid,
         sample.temperatureC,
-        sample.humidityPercent
+        sample.humidityPercent,
+        state.mode == FanMode::Rpm,
+        state.targetRpm,
+        state.mode == FanMode::Thermal
     );
 }
 
@@ -134,7 +141,7 @@ void sampleSht30()
     float temperatureC;
     float humidityPercent;
     if (sht30.read(temperatureC, humidityPercent)) {
-        climate.publish({true, temperatureC, humidityPercent});
+        climate.publish({true, temperatureC, humidityPercent, millis()});
     } else {
         climate.publish({});
     }
@@ -142,6 +149,7 @@ void sampleSht30()
 
 void serviceLocalControls()
 {
+    fan.updateTemperature(climate.snapshot());
     buttons.update();
     reportButtonEvents();
     applyButtonActions();
@@ -167,6 +175,7 @@ void networkTask(void *)
     while (true) {
         wifiStation.update();
         webPanel.update();
+        operatingMemory.update(fan);
         vTaskDelay(1);
     }
 }
@@ -205,6 +214,7 @@ void setup()
     }
 
     Serial.println("Starting fan at 100% duty...");
+    operatingMemory.begin(fan);
     if (!fan.begin()) {
         Serial.println("ERROR: Failed to initialize fan PWM.");
         haltAfterStartupError();
@@ -227,6 +237,7 @@ void setup()
 
     Serial.println();
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
+    Serial.println("Or: rpm <target>, mode rpm, mode duty.");
 
     // WebServer's parser can yield without sleeping. Share idle priority so
     // IDLE0 still runs/feeds its watchdog even during a slow request header.

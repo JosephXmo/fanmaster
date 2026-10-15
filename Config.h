@@ -34,12 +34,44 @@ namespace Fan {
 constexpr bool PWM_INVERTED = true;
 constexpr uint32_t PULSES_PER_REVOLUTION = 2;
 constexpr uint32_t RPM_SAMPLE_INTERVAL_MS = 1000;
+// Reject implausible pulse-count windows caused by wiring/power transients.
+// Keep above the attached fan's physical maximum and the configured target range.
+constexpr uint32_t MAX_VALID_RPM = 4000;
 constexpr uint32_t PWM_FREQUENCY_HZ = 25000;
 constexpr uint8_t PWM_RESOLUTION_BITS = 8;
 constexpr uint32_t PWM_MAX_VALUE = (1UL << PWM_RESOLUTION_BITS) - 1;
 constexpr uint8_t DEFAULT_DUTY_PERCENT = 35;
 constexpr uint32_t STARTUP_TIME_MS = 1000;
 }  // namespace Fan
+
+namespace RpmControl {
+// Choose limits attainable by the attached fan; these are setpoint bounds.
+constexpr uint32_t MIN_RPM = 550;
+constexpr uint32_t MAX_RPM = 1700;
+constexpr uint32_t DEFAULT_RPM = 850;
+// Filter alpha per one-second sample; smaller values smooth more heavily.
+constexpr float FILTER_ALPHA = 0.35f;
+constexpr float DEADBAND_RPM = 20.0f;
+// Gains use duty percentage points, RPM and seconds.
+constexpr float KP = 0.012f;
+constexpr float KI = 0.004f;
+constexpr float MAX_DUTY_CHANGE_PER_SECOND = 2.0f;
+constexpr float MAX_UPDATE_SECONDS = 2.0f;
+}  // namespace RpmControl
+
+namespace Thermal {
+constexpr uint32_t SENSOR_STALE_MS = 3000;
+constexpr uint16_t MIN_TEMPERATURE_DECI_C = 150;
+constexpr uint16_t MAX_TEMPERATURE_DECI_C = 950;
+constexpr uint16_t DEFAULT_TEMPERATURES_DECI_C[3] = {250, 400, 800};
+constexpr uint8_t DEFAULT_DUTIES[3] = {35, 65, 90};
+}  // namespace Thermal
+
+namespace OperatingMemory {
+// Persist fixed setpoints on exit and saved thermal curves. Boot starts in Duty.
+constexpr bool ENABLED = true;
+constexpr uint32_t RETRY_INTERVAL_MS = 1000;
+}  // namespace OperatingMemory
 
 namespace StatusLed {
 enum class ResponseSource : uint8_t {
@@ -118,6 +150,8 @@ constexpr uint32_t REPEAT_DELAY_MS = 1000;
 constexpr uint32_t REPEAT_INTERVAL_MS = 100;
 constexpr uint8_t DUTY_STEP_PERCENT = 5;
 constexpr uint8_t MODIFIED_DUTY_STEP_PERCENT = 1;
+constexpr uint32_t RPM_STEP = 100;
+constexpr uint32_t MODIFIED_RPM_STEP = 10;
 }  // namespace Buttons
 
 namespace I2c {

@@ -10,6 +10,12 @@ python3 scripts/assets.py pack --output "$check_dir/assets.bin"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \
   tests/test_buttons.cpp ButtonInputs.cpp -o "$check_dir/button-tests"
 "$check_dir/button-tests"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \
+  tests/test_rpm.cpp FanController.cpp OperatingMemory.cpp SerialConsole.cpp -o "$check_dir/rpm-tests"
+"$check_dir/rpm-tests"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \
+  tests/test_thermal.cpp FanController.cpp OperatingMemory.cpp -o "$check_dir/thermal-tests"
+"$check_dir/thermal-tests"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread -I . \
   tests/test_shared_state.cpp -o "$check_dir/shared-state-tests"
 "$check_dir/shared-state-tests"

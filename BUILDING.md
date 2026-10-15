@@ -199,6 +199,7 @@ On macOS/Linux, with Python 3, a C++17 compiler and Node.js 18+ on `PATH`:
 sh scripts/check_host.sh
 node tests/test_setup.mjs
 node tests/test_panel.mjs
+node tests/test_thermal.mjs
 ```
 
 The shell script invokes `python3` and `${CXX:-c++}`. Set `CXX=clang++` or
@@ -213,7 +214,7 @@ script; native Windows firmware builds use Python and Arduino CLI as above.
 
 Host checks cover input state/timing, shared climate snapshots, Wi-Fi/NVS
 failures, HTTP/resource streaming, uploader integrity/OLED status, and browser
-setup logic with substitutes. They do not prove hardware or OS USB acceptance.
+setup and thermal-widget logic with substitutes. They do not prove hardware or OS USB acceptance.
 Linux and Windows commands are documented for use but have not been run on
 those systems in this session. Recorded physical-board results are from macOS
 and are in [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md).

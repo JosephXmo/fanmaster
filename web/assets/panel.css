@@ -231,7 +231,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .control h2 {
+    .control h2, .thermal h2 {
       margin: 15px 0 8px;
       font-family: Georgia, serif;
       font-size: 34px;
@@ -368,4 +368,32 @@
 
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
+
+    .thermal { grid-column: 1 / -1; padding: 30px; }
+    .thermal-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .thermal-heading h2 { margin-bottom: 0; }
+    .thermal-heading button { width: auto; margin: 0; }
+    .thermal-heading button[aria-pressed="true"] { background: var(--mint); }
+    #thermalState { margin-top: 20px; }
+    #thermalForm { margin-top: 0; }
+    .thermal-body { display: grid; grid-template-columns: 1fr 1.2fr; gap: 28px; align-items: start; }
+    .thermal-chart svg { width: 100%; height: auto; color: var(--ink-soft); }
+    .thermal-chart text { font-size: 12px; fill: currentColor; }
+    .chart-grid { fill: none; stroke: var(--line); }
+    #thermalLine { stroke: var(--signal); stroke-width: 3; }
+    .thermal-chart circle { fill: var(--signal); stroke: var(--paper); stroke-width: 2; }
+    .thermal-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .thermal-points fieldset { min-width: 0; border: 1px solid var(--line); margin: 0; padding: 12px; }
+    .thermal-points legend { font-size: 13px; color: var(--ink-soft); }
+    .thermal-points label { font-size: 11px; margin: 8px 0 6px; }
+    .thermal-points input { width: 100%; padding: 10px 6px; font-size: 20px; }
+    input:disabled { opacity: .6; }
+    @media (max-width: 900px) { .thermal-body { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) {
+      .thermal { padding: 24px 18px; }
+      .thermal-heading { align-items: stretch; flex-direction: column; }
+      .thermal-heading button { width: 100%; }
+      .thermal-points { gap: 6px; }
+      .thermal-points fieldset { padding: 8px; }
     }
