@@ -122,7 +122,7 @@ void updateOled()
         fan.dutyPercent(),
         wifiStation.isConnected(),
         wifiStation.localIp(),
-        wifiStation.macAddress(),
+        Config::VERSION,
         hasClimateReading,
         latestTemperatureC,
         latestHumidityPercent

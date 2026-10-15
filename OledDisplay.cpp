@@ -34,7 +34,7 @@ void OledDisplay::showStatus(
     uint8_t dutyPercent,
     bool wifiConnected,
     const IPAddress &ipAddress,
-    const String &macAddress,
+    const String &version,
     bool hasClimateReading,
     float temperatureC,
     float humidityPercent
@@ -50,9 +50,8 @@ void OledDisplay::showStatus(
 
     display_.setTextSize(1);
     display_.setCursor(0, 0);
-    display_.print("FANMASTER  DUTY ");
-    display_.print(dutyPercent);
-    display_.print('%');
+    display_.print("FANMASTER  VER ");
+    display_.print(version);
     display_.drawFastHLine(0, 10, display_.width(), SSD1306_WHITE);
 
     display_.setTextSize(2);
@@ -62,27 +61,31 @@ void OledDisplay::showStatus(
 
     display_.setTextSize(1);
     display_.setCursor(0, 34);
-    display_.print("IP ");
+    display_.print("DUTY ");
+    display_.print(dutyPercent);
+    display_.print("%");
+
+
+    display_.setCursor(0, 44);
+    display_.print("IP   ");
     if (wifiConnected) {
         display_.print(ipAddress);
     } else {
         display_.print("not connected");
     }
 
-    display_.setCursor(0, 44);
-    display_.print("T ");
+
+    display_.setCursor(0, 54);
+    display_.print("TEMP ");
     if (hasClimateReading) {
         display_.print(temperatureC, 1);
-        display_.print("C H ");
+        display_.print("C  HUMI ");
         display_.print(humidityPercent, 0);
         display_.print('%');
     } else {
         display_.print("--.-C H --%");
     }
 
-    display_.setCursor(0, 54);
-    display_.print("MAC ");
-    display_.print(macAddress);
     display_.display();
 }
 

@@ -4,20 +4,22 @@
 
 namespace Config {
 
+constexpr char VERSION[] = "1.3";
+
 namespace Pins {
-constexpr uint8_t FAN_TACH = 4;
-constexpr uint8_t FAN_PWM = 5;
-constexpr uint8_t RGB_LED = 38;
+constexpr uint8_t FAN_TACH = 1;
+constexpr uint8_t FAN_PWM = 2;
+constexpr uint8_t RGB_LED = 21;
 
 // Both reserved I2C connectors are wired in parallel to this bus.
-constexpr uint8_t I2C_SDA = 6;
-constexpr uint8_t I2C_SCL = 7;
+constexpr uint8_t I2C_SDA = 3;
+constexpr uint8_t I2C_SCL = 4;
 
 // Active-low buttons. Change these four values to match the carrier board.
-constexpr uint8_t BUTTON_1 = 11;
-constexpr uint8_t BUTTON_2 = 12;
-constexpr uint8_t BUTTON_3 = 13;
-constexpr uint8_t BUTTON_4 = 14;
+constexpr uint8_t BUTTON_1 = 7;
+constexpr uint8_t BUTTON_2 = 8;
+constexpr uint8_t BUTTON_3 = 9;
+constexpr uint8_t BUTTON_4 = 10;
 
 // Adafruit_SSD1306 uses -1 when the display has no dedicated reset pin.
 constexpr int8_t OLED_RESET = -1;
@@ -54,7 +56,7 @@ constexpr uint8_t BRIGHTNESS = 32;
 constexpr uint8_t SLOW_DUTY_PERCENT = 1;
 constexpr uint8_t FAST_DUTY_PERCENT = 100;
 constexpr uint32_t SLOW_RPM = 550;
-constexpr uint32_t FAST_RPM = 2800;
+constexpr uint32_t FAST_RPM = 1700;
 constexpr uint32_t SLOW_FLASH_INTERVAL_MS = 1200;
 constexpr uint32_t FAST_FLASH_INTERVAL_MS = 150;
 constexpr uint32_t FLASH_ON_TIME_MS = 120;
@@ -73,8 +75,8 @@ constexpr size_t INPUT_BUFFER_SIZE = 24;
 
 namespace Wifi {
 // Replace these two strings before flashing the firmware.
-constexpr char SSID[] = "ssdh";
-constexpr char PASSWORD[] = "zx701031";
+constexpr char SSID[] = "OpenAI.uic";
+constexpr char PASSWORD[] = "LogmeIn114514";
 constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 constexpr uint32_t RETRY_INTERVAL_MS = 10000;
 }  // namespace Wifi
@@ -96,7 +98,7 @@ constexpr uint8_t PINS[COUNT] = {
     Pins::BUTTON_3,
     Pins::BUTTON_4,
 };
-constexpr bool ENABLE_INTERNAL_PULLUPS = true;
+constexpr bool ENABLE_INTERNAL_PULLUPS = false;
 constexpr uint32_t DEBOUNCE_MS = 30;
 constexpr uint8_t DUTY_STEP_PERCENT = 5;
 constexpr uint8_t MODIFIED_DUTY_STEP_PERCENT = 1;
