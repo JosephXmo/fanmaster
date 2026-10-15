@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include "AssetStore.h"
 
 class FanController;
 class WifiStation;
@@ -10,7 +11,8 @@ class WebPanel {
 public:
     WebPanel();
 
-    void begin(FanController &fan, WifiStation &wifiStation);
+    void begin(FanController &fan, WifiStation &wifiStation,
+               void (*serviceLocalControls)());
     void update();
 
 private:
@@ -19,6 +21,10 @@ private:
     void handleRoot();
     void handleStatus();
     void handleSetDuty();
+    void handleProvision();
+    void handleWifiStatus();
+    void handleSetup();
+    bool serveAsset(const char *path);
     void handleNotFound();
     void sendJson(int statusCode, const char *body);
     bool parseDutyArgument(uint8_t &dutyResult) const;
@@ -26,6 +32,8 @@ private:
     WebServer server_;
     FanController *fan_ = nullptr;
     WifiStation *wifiStation_ = nullptr;
+    AssetStore assets_;
+    void (*serviceLocalControls_)() = nullptr;
     bool started_ = false;
     uint32_t requestCount_ = 0;
     uint32_t lastUpdateMs_ = 0;

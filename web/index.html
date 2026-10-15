@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#173a3a">
+  <title>Fanmaster Control Deck</title>
+  <link rel="stylesheet" href="/assets/panel.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">F</div>
+        <div>
+          <p class="eyebrow">ESP32 / Control Deck</p>
+          <h1>Fanmaster</h1>
+        </div>
+      </div>
+      <div id="connection" class="connection" role="status">
+        <span class="connection-dot"></span>
+        <span id="connectionText">Connecting</span>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card telemetry" aria-labelledby="telemetryTitle">
+        <div id="telemetryTitle" class="section-label">Live shaft telemetry</div>
+        <div class="rpm-stage">
+          <div id="rotor" class="rotor" aria-hidden="true"></div>
+          <div>
+            <strong id="rpm" class="rpm-value">--</strong>
+            <span class="rpm-unit">REVOLUTIONS / MIN</span>
+          </div>
+        </div>
+
+        <div class="sensor-strip">
+          <div class="sensor-item">
+            <span class="sensor-name">Applied output</span>
+            <strong id="currentDuty" class="sensor-value">--%</strong>
+          </div>
+          <div class="sensor-item">
+            <span class="sensor-name">Temperature</span>
+            <strong id="temperature" class="sensor-value">--</strong>
+          </div>
+          <div class="sensor-item">
+            <span class="sensor-name">Humidity</span>
+            <strong id="humidity" class="sensor-value">--</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card control" aria-labelledby="controlTitle">
+        <div class="section-label">Manual override</div>
+        <h2 id="controlTitle">Set fan duty</h2>
+        <p class="control-copy">Choose an exact PWM duty cycle. The new value is applied only after submission.</p>
+
+        <form id="dutyForm" novalidate>
+          <label for="duty">Duty cycle</label>
+          <div class="input-wrap">
+            <input id="duty" name="duty" type="number" min="0" max="100" step="1" inputmode="numeric" required>
+            <span class="percent">%</span>
+          </div>
+          <button id="applyButton" type="submit">Apply fan setting</button>
+        </form>
+        <p id="formMessage" class="form-message" role="status" aria-live="polite">Waiting for controller status.</p>
+      </aside>
+    </main>
+
+    <footer>
+      <span id="lastUpdated">No telemetry received yet</span>
+      <span>Entrypoint <code>/api/status</code> &middot; 1 second cadence</span>
+    </footer>
+  </div>
+
+  <script src="/assets/panel.js" defer></script>
+</body>
+</html>

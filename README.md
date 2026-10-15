@@ -24,11 +24,14 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Adjust duty with buttons 1 and 2 in 5% steps, or 1% while button 3 is held.
 - Toggle the RGB status indication with button 4.
 - Drive the SSD1306 dashboard and wrap the Sensirion arduino-sht sensor.
-- Connect to a configured Wi-Fi network in station mode with non-blocking retry.
+- Provision Wi-Fi through a Captive Portal and save verified credentials in ESP32 NVS.
+- Retry station connections without blocking the local firmware loop.
+- Read Web Panel, setup page and static assets from an external W25Q64 through SPIMemory.
 - Serve a responsive Web Panel with live RPM and fan duty control.
 - Expose status and fan-control HTTP API entrypoints.
 
-Temperature/humidity sampling is not yet implemented.
+SHT30 initialization performs one sample through the library. Periodic sampling
+and publishing temperature/humidity to the OLED and API are not yet implemented.
 
 ## Default hardware configuration
 
@@ -46,6 +49,7 @@ Temperature/humidity sampling is not yet implemented.
 | SSD1306 address | `0x3C` |
 | SSD1306 reset | `-1` (no dedicated reset pin) |
 | SHT30 address | `0x44` |
+| W25Q64 SCK / MOSI / MISO / CS | GPIO 8 / 9 / 10 / 15 |
 
 Buttons are expected to connect their GPIO input to ground when pressed. The
 firmware enables the ESP32 internal pull-ups by default. If the module already
@@ -61,10 +65,15 @@ Do not wire a switch so that pressing it directly shorts VCC to ground.
 - Adafruit GFX Library
 - Sensirion arduino-sht (`SHTSensor.h`)
 - FastLED 3.10.5 or later
+- SPIMemory 3.4.0
 
 The Adafruit GFX dependency is normally installed automatically with Adafruit
 SSD1306. The display, sensor, and WS2812 libraries are not vendored in this
-repository. This workspace uses FastLED 3.10.5 with ESP32 Arduino core 3.3.11.
+repository. Validation uses FastLED 3.10.7, arduino-sht 2.0.0, SPIMemory 3.4.0,
+and ESP32 Arduino core 3.3.12.
+
+See [FLASH_RESOURCES.md](FLASH_RESOURCES.md) for SPI wiring, resource packaging,
+the independent uploader firmware, application build/flash commands and setup flow.
 
 ## Onboard LED response
 
@@ -109,23 +118,26 @@ Arduino core's built-in `WiFi` and
 
 ### Network behavior
 
-- Use hard-coded `Config::Wifi::SSID` and `Config::Wifi::PASSWORD` strings.
-- Use station mode only (`WIFI_STA`).
-- Never create a fallback access point.
-- Keep fan control, TACH sampling, serial handling, and button debounce running
-  while Wi-Fi is disconnected.
-- Attempt reconnection in the background at a bounded interval instead of
-  blocking the main loop indefinitely.
-- Print the assigned IP address to the serial console after connecting.
-- In non-Plotter Mode, report Wi-Fi addressing, Web request counts, maximum
-  main-loop gaps, free heap, and FastLED show timing every ten seconds.
+- Load credentials from ESP32 NVS; no SSID/password constants are compiled in.
+- With no valid credentials, immediately open `Fanmaster-Setup-<MAC suffix>`.
+- Otherwise attempt station connection with bounded retries; open setup after
+  45 seconds of continuous failure.
+- Serve the setup page at `http://192.168.4.1/`, with catch-all DNS and HTTP
+  redirects for captive-portal discovery.
+- Verify submitted credentials by connecting before saving one NVS record.
+  Failed candidates preserve the previous record. Save failures leave setup open.
+- Stop the setup AP five seconds after a successful connection and save.
+- Keep local firmware processing active between resource transmission chunks.
+- Print the station IP on connection. Passwords are never logged or echoed.
 
-Real credentials must be entered locally before flashing. They should not be
-published if this repository is later pushed to a remote host.
+The open setup link and default NVS storage are not encrypted. The setup AP
+remains available while configuration is needed. See the resource guide for
+limits, recovery behavior and target acceptance steps.
 
 ### Web interface
 
-The Web Panel is compiled into the firmware and served at `/`. It contains:
+The Web Panel is stored in external SPI flash and served at `/` when setup is
+inactive. During setup, `/` displays the provisioning page. The dashboard contains:
 
 - A current RPM readout refreshed once per second.
 - A numeric spinner with `min=0`, `max=100`, and `step=1`.
@@ -174,68 +186,32 @@ local network and does not initially include authentication or TLS.
 
 ## Implementation details
 
-- `WifiStation` owns station-mode connection attempts and rollover-safe retry
-  timing. A failed or lost connection never starts an access point.
-- `FanController::currentRpm()` exposes the most recent completed one-second
-  TACH sample without recounting pulses during an HTTP request.
-- `StatusLed` uses the WS2812 library and maps the configured duty or TACH
-  response source to a non-blocking flash interval and spectrum color.
-- `OledDisplay` renders RPM, duty, and Wi-Fi addressing at a limited refresh
-  rate so display transfers do not dominate the main loop.
-- Buttons 1 and 2 increase and decrease fan duty in 5% steps. Holding button 3
-  while pressing either control changes its step to 1% for fine adjustment.
-- Button 4 toggles the RGB status indication; disabling it transmits black
-  immediately.
-- `WebPanel` owns the embedded HTML, CSS, JavaScript, HTTP routes, and strict
-  server-side duty validation.
-- HTTP requests, Wi-Fi state updates, TACH sampling, serial commands, and button
-  debounce all run cooperatively from the non-blocking main loop.
-- Serial and HTTP control call the same `FanController::setDutyPercent()` method
-  and therefore share one applied fan state.
-- The browser starts its next status poll only after the previous request has
-  completed, preventing overlapping requests.
+- `WifiStation` owns station retries, temporary setup AP/DNS, candidate
+  verification and the NVS credential record. It uses rollover-safe timing.
+- `W25q64` adapts SPIMemory with configurable pins, frequency and address bounds.
+- `AssetStore` validates the resource index and file checksums. `WebPanel`
+  streams resources through a fixed buffer, keeping whole pages out of RAM.
+- `web/` contains editable HTML/CSS/JS. A tiny internal setup form remains
+  available when the external setup resources are missing or corrupt.
+- `FanController::currentRpm()` exposes a cached one-second sample based on
+  TACH interrupt counts. HTTP requests do not recount pulses.
+- Buttons, serial and HTTP all update the same `FanController` instance.
+- Local control and LED processing run between resource chunks. The synchronous
+  HTTP server still has request/socket waits; target loop gaps must be measured.
+- The OLED refreshes at most once per 250 ms so display transfers leave time for
+  input and network handling.
+- Buttons 1/2 adjust duty by 5%; holding button 3 changes the step to 1%.
+  Button 4 toggles RGB indication and transmits black immediately when disabled.
 
-## Deferred roadmap
+## Remaining roadmap
 
-These features are intentionally outside the first Web Panel implementation:
-
-- Sample SHT30 temperature and humidity at a sensor-appropriate interval.
-- Draw live temperature and humidity on the SSD1306.
-- Replace Web Panel temperature/humidity placeholders with sampled values.
-- Coordinate serial, Web Panel, and button updates through one shared fan-state
-  interface.
-- Improve the experimental TACH circuit, verify stable pulse counting, then set
-  `Config::StatusLed::RESPONSE_SOURCE` to `ResponseSource::TACH`.
-
-### Optional captive portal fallback
-
-The current firmware remains station-only and never creates an access point.
-A later optional enhancement may provide Wi-Fi provisioning when the configured
-credentials are unavailable:
-
-- After a bounded number or duration of failed station connection attempts,
-  create an open setup access point.
-- Run a catch-all DNS server that redirects client requests to a local Captive
-  Portal.
-- Embed a second, deliberately compact webpage that asks for the target Wi-Fi
-  SSID and password.
-- Validate submitted values without logging or returning the password in HTTP
-  responses.
-- Attempt the supplied credentials while fan control, TACH sampling, and other
-  local firmware work continue to run.
-- Stop the open access point and Captive Portal after a successful station
-  connection.
-
-Before implementation, decide whether submitted credentials survive a reboot
-in ESP32 NVS or remain valid only for the current session, how long the setup
-access point remains available, and how it is named. An open provisioning AP
-exposes submitted credentials as plaintext on its local radio link, so the
-portal should exist only while configuration is necessary.
-
-Two embedded pages will increase flash use and temporary heap pressure. The
-main Web Panel may therefore be simplified, or the two pages may share a small
-common style vocabulary while remaining independently servable. Resource usage
-must be measured on the selected ESP32 target before this fallback is enabled.
+- Add periodic SHT30 sampling and publish live temperature/humidity to the
+  OLED and Web API, including missing/stale/error states.
+- Optionally calculate RPM from TACH interrupt timestamps, with a no-pulse
+  timeout, to improve update latency for dependent features including the LED.
+- Validate SPI storage, Captive Portal behavior, NVS persistence and main-loop
+  responsiveness on the selected ESP32 target. The experimental TACH circuit
+  remains unchanged.
 
 ## Source layout
 
@@ -251,9 +227,13 @@ must be measured on the selected ESP32 target before this fallback is enabled.
 | `OledDisplay.*` | SSD1306 RPM, duty, IP, and MAC status interface |
 | `Sht30Sensor.*` | Sensirion arduino-sht wrapper |
 | `WifiStation.*` | Non-blocking Wi-Fi station connection and retry |
-| `WebPanel.*` | Embedded responsive UI and HTTP API entrypoints |
+| `WebPanel.*` | Static resource streaming, recovery setup form and HTTP APIs |
+| `W25q64.*`, `AssetStore.*`, `AssetFormat.h` | SPIMemory adapter and checked read-only asset image |
+| `web/` | Web Panel and Captive Portal HTML/CSS/JS sources |
+| `tools/ResourceUploader/` | Separate serial-to-W25Q64 uploader sketch |
+| `scripts/` | Resource pack/verify/upload and staged firmware builds |
 
 ## Build status
 
-The firmware targets `esp32:esp32:esp32s3` with ESP32 Arduino core 3.3.11 and
-FastLED 3.10.5.
+The firmware targets `esp32:esp32:esp32s3` with ESP32 Arduino core 3.3.12 and
+FastLED 3.10.7 and SPIMemory 3.4.0.

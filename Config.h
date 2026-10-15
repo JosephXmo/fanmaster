@@ -8,6 +8,11 @@ namespace Pins {
 constexpr uint8_t FAN_TACH = 4;
 constexpr uint8_t FAN_PWM = 5;
 constexpr uint8_t RGB_LED = 38;
+// External W25Q64, ordinary single-bit SPI. CS must be driven, not tied high.
+constexpr uint8_t FLASH_SCK = 8;
+constexpr uint8_t FLASH_MOSI = 9;
+constexpr uint8_t FLASH_MISO = 10;
+constexpr uint8_t FLASH_CS = 15;
 
 // Both reserved I2C connectors are wired in parallel to this bus.
 constexpr uint8_t I2C_SDA = 6;
@@ -46,7 +51,7 @@ enum class IndicationMode : uint8_t {
     FLASH_AND_SPECTRUM,
 };
 
-// Use TACH after the experimental pulse-counting circuit is stable.
+// Use measured TACH speed for LED indication; no circuit changes are required.
 constexpr ResponseSource RESPONSE_SOURCE = ResponseSource::TACH;
 constexpr IndicationMode INDICATION_MODE = IndicationMode::SPECTRUM;
 constexpr uint16_t LED_COUNT = 1;
@@ -72,12 +77,21 @@ constexpr size_t INPUT_BUFFER_SIZE = 24;
 }  // namespace SerialConsole
 
 namespace Wifi {
-// Replace these two strings before flashing the firmware.
-constexpr char SSID[] = "ssdh";
-constexpr char PASSWORD[] = "zx701031";
+// Credentials are provisioned over the setup AP and stored in ESP32 NVS.
+constexpr char SETUP_AP_PREFIX[] = "Fanmaster-Setup-";
 constexpr uint32_t CONNECT_TIMEOUT_MS = 15000;
 constexpr uint32_t RETRY_INTERVAL_MS = 10000;
+constexpr uint32_t SETUP_AFTER_FAILURE_MS = 45000;
+// Keep the setup AP until credentials connect and are saved successfully.
+constexpr uint32_t SETUP_CLOSE_GRACE_MS = 5000;
+constexpr uint32_t SETUP_RETRY_INTERVAL_MS = 10000;
 }  // namespace Wifi
+
+namespace Storage {
+constexpr uint32_t SPI_CLOCK_HZ = 10000000;
+constexpr size_t HTTP_CHUNK_BYTES = 1024;
+constexpr uint32_t HTTP_WRITE_TIMEOUT_MS = 1000;
+}  // namespace Storage
 
 namespace Web {
 constexpr uint16_t HTTP_PORT = 80;
@@ -115,7 +129,7 @@ constexpr uint8_t SHT30_ADDRESS = 0x44;
 }  // namespace I2c
 
 namespace Oled {
-constexpr uint32_t REFRESH_INTERVAL_MS = 1;
+constexpr uint32_t REFRESH_INTERVAL_MS = 250;
 }  // namespace Oled
 
 }  // namespace Config

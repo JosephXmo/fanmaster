@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fanmaster Wi-Fi setup</title>
+<link rel="stylesheet" href="/assets/setup.css">
+<script src="/assets/setup.js" defer></script>
+</head>
+<body><main>
+<h1>Connect Fanmaster</h1>
+<p>Choose a 2.4 GHz Wi-Fi network. Credentials are saved on the device after a successful connection.</p>
+<form id="setup" method="post" action="/api/wifi/configure">
+<label for="ssid">Network name (SSID)</label>
+<input id="ssid" name="ssid" maxlength="32" autocomplete="off" required>
+<label for="password">Password</label>
+<input id="password" name="password" type="password" maxlength="64" autocomplete="new-password">
+<p class="hint">Leave the password empty for an open network.</p>
+<button id="connect">Connect and save</button>
+</form>
+<p id="status" role="status" aria-live="polite">Ready to configure.</p>
+<p class="hint">Keep this page open while connecting. The setup network closes after success. Join your usual network to open the displayed device address.</p>
+</main></body></html>

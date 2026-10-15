@@ -122,6 +122,25 @@ void updateOled()
     );
 }
 
+void serviceLocalControls()
+{
+    buttons.update();
+    reportButtonEvents();
+    adjustDutyFromButtons();
+    toggleStatusLedFromButton();
+    console.update(fan);
+
+    float rpm;
+    if (fan.updateRpm(rpm)) {
+        statusLed.setRpm(rpm);
+        reportFanState(rpm);
+    }
+
+    statusLed.setDutyPercent(fan.dutyPercent());
+    statusLed.update();
+    updateOled();
+}
+
 }  // namespace
 
 void setup()
@@ -175,28 +194,14 @@ void setup()
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
 
     wifiStation.begin();
-    webPanel.begin(fan, wifiStation);
+    webPanel.begin(fan, wifiStation, serviceLocalControls);
 }
 
 void loop()
 {
     wifiStation.update();
     webPanel.update();
-    buttons.update();
-    reportButtonEvents();
-    adjustDutyFromButtons();
-    toggleStatusLedFromButton();
-    console.update(fan);
-
-    float rpm;
-    if (fan.updateRpm(rpm)) {
-        statusLed.setRpm(rpm);
-        reportFanState(rpm);
-    }
-
-    statusLed.setDutyPercent(fan.dutyPercent());
-    statusLed.update();
-    updateOled();
+    serviceLocalControls();
 
     delay(1);
 }
