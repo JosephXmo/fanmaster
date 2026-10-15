@@ -11,7 +11,8 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 
 ## Current capabilities
 
-- Start the fan at 100% duty for one second, then use a configurable default.
+- Start the fan at 100% duty for one second, then restore the saved manual duty
+  (or the configured default when operating memory is disabled/unavailable).
 - Set an integer duty cycle from 0 through 100 over the serial console.
 - Calculate fan RPM from a two-pulse-per-revolution TACH signal once per second.
 - Indicate fan duty or RPM through configurable WS2812 flash, spectrum, or
@@ -24,12 +25,17 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Adjust duty with buttons 1 and 2 in 5% steps, or 1% while function (button 4) is held.
   Holding an adjustment button repeats after one second, then every 100 ms.
 - Toggle RGB status indication with function + button 3. A standalone button-3
-  click emits a reserved mode-switch event; duty control remains active.
+  click switches between manual duty and fixed RPM control.
+- Hold an initially configured 850 RPM target with filtered PI feedback, a
+  deadband, PWM slew limiting and anti-windup. RPM buttons step by 100, or 10
+  with the function key; range and steps are configurable.
+- Remember each mode's setpoint in NVS on mode exit. Persistence can be disabled
+  in Config; automatic PWM corrections never overwrite the manual duty setting.
 - Drive the SSD1306 dashboard and wrap the Sensirion arduino-sht sensor.
 - Provision Wi-Fi through a Captive Portal and save verified credentials in ESP32 NVS.
 - Retry station connections without blocking the local firmware loop.
 - Read Web Panel, setup page and static assets from an external W25Q64 through SPIMemory.
-- Serve a responsive Web Panel with live RPM and fan duty control.
+- Serve a responsive Web Panel with live telemetry, manual duty and fixed RPM control.
 - Expose status and fan-control HTTP API entrypoints.
 
 SHT30 is sampled once per second. OLED and HTTP share the latest cached sample;
@@ -159,6 +165,8 @@ inactive. During setup, `/` displays the provisioning page. The dashboard contai
 - A current RPM readout refreshed once per second.
 - A numeric spinner with `min=0`, `max=100`, and `step=1`.
 - A submit button that applies the requested fan duty cycle.
+- An RPM target input bounded by Config limits and a button to activate RPM control.
+- Active control mode and target RPM, alongside the actual PWM output.
 - Current duty-cycle feedback and clear validation or network error messages.
 - Live temperature and humidity readouts; failed samples show `--`.
 
@@ -199,6 +207,20 @@ The server will accept only a complete base-10 integer in the inclusive range
 JSON. Malformed, fractional, missing, or out-of-range values return HTTP 400
 without changing the fan setting.
 
+Submitting duty explicitly selects manual control. `POST /api/fan/rpm` accepts
+`rpm=850` and selects fixed RPM control; the target must be a whole number in
+`Config::RpmControl::MIN_RPM..MAX_RPM` (default 550–1700). Both endpoints reject
+invalid input before changing mode. `POST /api/fan/mode` accepts `mode=duty` or
+`mode=rpm` to switch using the existing setpoint. Status also includes `mode`,
+`target_rpm`, `manual_duty_percent`, `min_rpm` and `max_rpm`; `duty_percent`
+always means the actual PWM output, including automatic corrections.
+
+The OLED shows `DUTY … MANUAL` or `DUTY … SET <RPM>`. Serial commands `rpm 850`,
+`mode rpm` and `mode duty` supplement the existing 0–100 manual duty command.
+See [RPM_CONTROL.md](RPM_CONTROL.md) for tuning, persistence and validation.
+The updated Web Panel requires repacking/re-uploading external flash assets as
+well as flashing the main firmware; the resource-uploader firmware is unchanged.
+
 Unknown API paths return JSON errors. The Web Panel is intended for a trusted
 local network and does not initially include authentication or TLS.
 
@@ -218,8 +240,9 @@ local network and does not initially include authentication or TLS.
   server. Its request/socket waits do not run on the local control task.
   It shares idle priority on core 0 so parser yield loops cannot starve the
   idle-task watchdog; watchdog protection stays enabled.
-- Temperature/humidity snapshots use a mutex; RPM/connection state are atomic.
-  Concurrent duty setters serialize the PWM write and cached duty update.
+- Temperature/humidity and fan-control snapshots use mutexes; cached RPM and
+  connection state are atomic. Mode, setpoint, feedback and PWM updates share
+  one fan mutex. NVS writes run in the network task outside this mutex.
 - USB CDC logging drops output when the host stops reading instead of blocking
   physical controls. The `[LOCAL]` diagnostic measures control-loop gaps;
   `[WEB]` measures the separate network-task gaps.
@@ -230,17 +253,19 @@ local network and does not initially include authentication or TLS.
   100 ms. Configure `REPEAT_DELAY_MS` and `REPEAT_INTERVAL_MS` in `Config::Buttons`.
   Opposing held adjustment buttons cancel; delayed loops never replay a burst
   of missed repeat events. Duty remains clamped to 0–100%.
+- In RPM mode those same button events adjust the target by `RPM_STEP` (100)
+  or `MODIFIED_RPM_STEP` (10), clamped to `RpmControl::MIN_RPM..MAX_RPM`.
 - Function + button 3 toggles RGB indication once per button-3 hold, in either
   press order. Releasing that chord does not emit a mode-switch event. A
-  standalone button-3 click emits `modeSwitchRequested` on release and logs it;
-  this is reserved for future duty/RPM mode selection. Duty control remains
-  active until RPM control is implemented. Button 4 alone has no action.
+  standalone button-3 click switches mode on release. Returning to manual mode
+  restores its previous duty; entering RPM mode starts feedback from the
+  currently applied PWM output. Button 4 alone has no action.
 
 ## Remaining roadmap
 
 - Add sensor recovery and explicit stale/error diagnostics after startup failures.
-- Implement RPM closed-loop control and consume the reserved button-3
-  duty/RPM mode-switch event.
+- Measure fixed-RPM settling time, overshoot and load-disturbance recovery on
+  the target fan; tune feedback gains and attainable RPM limits if needed.
 - Optionally calculate RPM from TACH interrupt timestamps, with a no-pulse
   timeout, to improve update latency for dependent features including the LED.
 - Validate SPI storage, Captive Portal behavior, NVS persistence and main-loop
@@ -253,11 +278,12 @@ local network and does not initially include authentication or TLS.
 | --- | --- |
 | `fanmaster.ino` | Firmware setup, loop, and module coordination |
 | `Config.h` | Pins, addresses, timing, and user configuration |
-| `FanController.*` | PWM output, TACH interrupt, and RPM calculation |
+| `FanController.*`, `RpmRegulator.h` | PWM, TACH, mode/setpoint ownership and smoothed PI control |
+| `OperatingMemory.*` | Versioned, checked NVS setpoint record and deferred writes |
 | `SerialConsole.*` | Non-blocking serial duty commands |
 | `StatusLed.*` | WS2812 control with configurable duty/TACH visual response |
 | `I2cBus.*` | Shared configurable I2C bus |
-| `ButtonInputs.*`, `ButtonControls.h` | Debounce, timed repeat, function chords and reserved mode-switch events |
+| `ButtonInputs.*`, `ButtonControls.h` | Debounce, timed repeat, function chords and mode-switch events |
 | `OledDisplay.*` | SSD1306 version, RPM, duty, IP and climate status interface |
 | `Sht30Sensor.*`, `ClimateReading.h` | Sensor reads and shared cached climate sample |
 | `WifiStation.*` | Non-blocking Wi-Fi station connection and retry |
@@ -273,7 +299,7 @@ local network and does not initially include authentication or TLS.
 The firmware targets `esp32:esp32:esp32s3` with ESP32 Arduino core 3.3.12 and
 FastLED 3.10.7 and SPIMemory 3.4.0.
 
-The button/OLED-uploader refinement compiles for `CDCOnBoot=cdc`: application
+The earlier button/OLED-uploader refinement at `aadcd64` compiles for `CDCOnBoot=cdc`: application
 1,028,671 bytes / 50,900 bytes static RAM; uploader 359,546 bytes / 23,960 bytes
 static RAM. `sh scripts/check_host.sh` covers debounce/repeat/chord behavior,
 OLED update pacing, headless uploads and failure/success display transitions,
@@ -284,3 +310,12 @@ confirmed physical-button behavior and watched OLED progress through the final
 `Done verified / 100%` screen. After a host-network interruption was resolved,
 all six resources and 12 consecutive status reads passed a final network check.
 See [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measurements and limits.
+
+The fixed-RPM revision builds for the same target: application 1,032,411 bytes /
+50,956 bytes static RAM. Its host tests include feedback simulation with noisy
+and quantized measurements, control-mode/limit handling, NVS recovery and Web
+Panel RPM interactions. This revision has now been flashed and tested on the
+connected ESP32-S3: selected 650/850/1050 RPM targets, NVS restoration after reset,
+resource readback and HTTP concurrency. See the fixed-RPM section of
+[HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measured response and limits;
+this does not establish the full speed range or recovery under external load.

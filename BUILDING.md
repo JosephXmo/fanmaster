@@ -198,6 +198,7 @@ On macOS/Linux, with Python 3, a C++17 compiler and Node.js 18+ on `PATH`:
 ```sh
 sh scripts/check_host.sh
 node tests/test_setup.mjs
+node tests/test_panel.mjs
 ```
 
 The shell script invokes `python3` and `${CXX:-c++}`. Set `CXX=clang++` or

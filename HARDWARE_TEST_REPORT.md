@@ -166,3 +166,96 @@ available. `oled-retry-upload.log` records the paced visual check;
 `restored-network-runtime.log` and `restored-network-results.json` record the
 successful final application/network check. The board is left running the
 application at 35% duty with LED indication enabled and its NVS intact.
+
+## Fixed-RPM working-tree acceptance
+
+This round uses the uncommitted fixed-RPM implementation on `e5f7d01`, with
+the default Config gains/range and unchanged experimental wiring. No feedback
+gains were retuned during this run. Main-sketch sources were compared byte for
+byte with the staged successful build before upload. Evidence is kept under
+the ignored `build/rpm-acceptance/` directory; `manifest.json` records source
+and binary hashes. This round does not replace the older acceptance evidence.
+
+### Upload and interfaces
+
+- Target: the same ESP32-S3-Zero at `/dev/cu.usbmodem101`. Host LAN address was
+  `192.168.30.152`; the device automatically reconnected at `192.168.30.215`.
+- Main build: 1,032,411 program bytes / 50,956 static RAM bytes. Uploader:
+  359,546 / 23,960. Both compiled for `esp32:esp32:esp32s3:CDCOnBoot=cdc`.
+- Uploader and main flashes passed esptool hash verification. The new six-file
+  resource image is 26,108 bytes and returned `DONE verified` after transfer.
+  All six resources and `/` subsequently matched their source bytes over HTTP.
+  NVS was not erased; no Wi-Fi credentials were read out or changed.
+- Initial state was Duty 35%, target 850 RPM. Requests for 0, 549, 1701,
+  fractional, negative and overflowing RPM values returned HTTP 400 without
+  changing mode or target.
+
+### Closed-loop measurements
+
+The test first selected manual Duty 42%, then applied the following targets.
+Each row summarizes the last 30 status samples of its observation. Sampling
+was approximately once per second and reads the existing completed TACH window.
+
+| Target and transition | Observation | Mean RPM | Raw RPM range | RPM standard deviation | Applied duty range |
+| --- | --- | --- | --- | --- | --- |
+| Enter 850 | 100 s | 847 | 810–930 | 26.48 | 40–40% |
+| 850 → 1050 | 100 s | 1034 | 990–1200 | 43.63 | 52–53% |
+| 1050 → 650 | 110 s | 657 | 540–720 | 37.43 | 28–29% |
+| 650 → 850 | 100 s | 836 | 810–900 | 27.64 | 38–38% |
+
+The final mean errors were -3, -16, +7 and -14 RPM respectively. PWM did not
+show sustained large alternating corrections in these steady portions. Raw TACH
+readings still include quantization and occasional larger deviations; a 10 RPM
+target step does not establish 10 RPM measurement accuracy or instantaneous
+tracking within the deadband.
+
+As a descriptive settling measure, the trailing ten-sample mean entered and
+remained within ±30 RPM of target for the rest of the run at approximately
+22, 69, 75 and 39 seconds respectively. This retrospective measure is not a
+claim that every individual sample stayed inside that band. There was no
+independent tachometer or controlled external load disturbance in this test.
+
+`sweep-results.json` contains all 410 status samples. The full sweep lasted
+433.5 seconds. The longest status request took 1.5194 seconds. The local-loop
+gap peaked at 47 ms and later reporting windows were 28–29 ms. There was one
+initial USB-associated boot and no observed watchdog/panic or subsequent reboot.
+Temperature and humidity remained available throughout the status checks.
+
+### Operating memory and network load
+
+- Before resetting, the test saved distinct sentinel settings: manual Duty 42%
+  and target 930 RPM, by leaving the corresponding modes and allowing the
+  queued save to finish. Returning from feedback to Duty applied 42%, not the
+  automatically calculated PWM value.
+- esptool performed a hardware reset without erasing flash. The restarted
+  application entered Duty and reported 42% / 930 RPM, confirming both settings
+  were restored rather than falling back to Config's 35% / 850 RPM defaults.
+  This is reset persistence; a cold power removal was not performed.
+- The test then saved 35% / 850 RPM. A further USB-associated restart again
+  reported these values in Duty before the test re-entered RPM mode.
+- With feedback active, 30 HTTP requests from three concurrent clients all
+  completed; the longest took 4.5535 seconds. This records queueing through the
+  synchronous server, not parallel request handling. Physical observation and
+  serial diagnostics were recorded in a separate final observation run.
+
+The user confirmed all requested physical checks for this RPM revision were
+normal: button-3 mode selection and OLED MANUAL/SET display; RPM adjustment by
+100/10 with the function modifier; hold repeat after one second; function +
+button 3 LED toggle without a mode change; and continued OLED/fan operation.
+The 145.9-second observation also recorded button/chord events, both modes and
+targets reaching both Config bounds during deliberate holds. Its 100 HTTP
+samples include user adjustment and are not an additional steady-state curve.
+Local gaps remained at most 47 ms, with no observed watchdog/panic or extra
+reboot after the initial USB-associated boot. The latest LED diagnostic was
+enabled. User observations and firmware measurements are separate evidence.
+
+After these checks, the test restored the remembered manual duty to 35% and
+target to 850 RPM and left fixed-RPM control active. A final 60-second HTTP run
+completed all 60 status reads; the last 30 averaged 836 RPM (810–900 raw RPM)
+with PWM constant at 38%. Final sampled climate was 23.6°C / 69.4% RH, with
+Wi-Fi connected. Serial handles were closed and the application was left
+running. The configured
+550/1700 RPM endpoints were reached as setpoints during button tests, but their
+steady physical speeds were not characterized. A cold power-cycle check,
+independent speed calibration and external load-disturbance recovery remain
+unmeasured.
