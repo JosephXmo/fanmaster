@@ -31,74 +31,140 @@ The adapter checks GPIO collisions at compile time. SPI speed defaults to
 
 ## Build and upload
 
-Install ESP32 Arduino core 3.x and these libraries using Arduino Library
-Manager or `arduino-cli lib install`:
-
-- `SPIMemory` 3.4.0
-- `FastLED` 3.10.7
-- `Adafruit SSD1306`, `Adafruit GFX Library`, `Adafruit BusIO`
-- Sensirion `arduino-sht` 2.0.0
+First follow [BUILDING.md](BUILDING.md) for macOS, Linux or Windows tool
+installation, the ESP32 core/libraries, the `.venv` environment and serial-port
+permissions. The examples below use only repository-local `build/` paths and
+run from the repository root. Close any serial monitor before uploading.
 
 The build script stages only the selected sketch, with shared files copied from
 this checkout. Both programs therefore use the **same Config.h**. The uploader
-needs only SPIMemory; it does not run the fan application or change NVS.
+uses SPIMemory and the Adafruit SSD1306/GFX/BusIO libraries for optional OLED
+progress; it does not run the fan application or change NVS. Its OLED uses the
+same I2C pins, address and dimensions from Config as the application.
 
-1. Build the resource image. HTML/CSS/JS and other assets go in `web/`; no
-   Internet-hosted assets are required by either page.
+The sequence is: pack/verify resources → flash the uploader → transfer resources
+until `DONE verified` → flash the application. Run commands one at a time and
+stop if any command fails. Recheck the port after firmware upload; USB
+reenumeration may change it. The uploader replaces the running fan application
+temporarily; the final application upload restores fan control.
 
-   ```sh
-   python3 scripts/assets.py pack --output /tmp/fanmaster-assets.bin
-   python3 scripts/assets.py verify /tmp/fanmaster-assets.bin
-   ```
+### macOS / Linux shell
 
-2. Build and flash the dedicated uploader. Replace the serial port below with
-   the board's actual port. Close Arduino Serial Monitor first.
+Use your actual port from `arduino-cli board list`. The example assignment is
+for macOS; on Linux use the appropriate `/dev/ttyACM0` or `/dev/ttyUSB0` instead.
+`FM_PYTHON` and `FM_PORT` remain set for the commands in this terminal.
 
-   ```sh
-   python3 scripts/build_firmware.py uploader --work-dir /tmp/fanmaster-uploader
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
-     --port /dev/cu.usbmodemYOUR_PORT \
-     --input-dir /tmp/fanmaster-uploader/build \
-     /tmp/fanmaster-uploader/ResourceUploader
-   ```
+```sh
+FM_PYTHON=./.venv/bin/python
+FM_PORT=/dev/cu.usbmodem101
+arduino-cli board list
+```
 
-3. Install pyserial into a Python environment, then transfer the image. No
-   firmware flashing or serial-port guessing happens in this command.
-
-   ```sh
-   python3 -m venv /tmp/fanmaster-python
-   /tmp/fanmaster-python/bin/python -m pip install pyserial
-   /tmp/fanmaster-python/bin/python scripts/assets.py upload \
-     /tmp/fanmaster-assets.bin --port /dev/cu.usbmodemYOUR_PORT
-   ```
-
-   The host sets DTR and RTS low before opening the native USB port, avoiding
-   accidental ROM download mode on ESP32-S3. If esptool leaves the board in
-   download mode, use its `--after watchdog-reset` option with a read-only
-   command, or press RESET after releasing BOOT, then retry the transfer.
-
-   The uploader erases only the sectors occupied by the new image, checks every
-   page by reading it back, and verifies the image CRC. It writes the header
-   last. `DONE verified` confirms the serial transfer and flash readback, not
-   browser or radio acceptance. Updating resources replaces the old image; a
-   failed/interrupted transfer requires another upload. Old trailing sectors
-   are outside the new index and are never served.
-
-4. Build and flash the application without erasing all ESP32 flash/NVS:
+1. Pack and verify the files in `web/`:
 
    ```sh
-   python3 scripts/build_firmware.py main --work-dir /tmp/fanmaster-main
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc \
-     --port /dev/cu.usbmodemYOUR_PORT \
-     --input-dir /tmp/fanmaster-main/build /tmp/fanmaster-main/fanmaster
+   "$FM_PYTHON" scripts/assets.py pack --output build/fanmaster-assets.bin
+   "$FM_PYTHON" scripts/assets.py verify build/fanmaster-assets.bin
    ```
 
-   The external image remains intact. Subsequent firmware updates need only
-   this step unless the web resources change. To use Arduino IDE, pass
-   `--prepare-only` to the build script and open its printed sketch directory.
-   To supply an explicit CLI or extra libraries, use `--arduino-cli PATH` or
-   `--libraries DIRECTORY`. Staged copies are generated build inputs; edit the
-   original files in this checkout and stage again after any changes.
+2. Build and flash the uploader:
+
+   ```sh
+   "$FM_PYTHON" scripts/build_firmware.py uploader --work-dir build/uploader
+   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port "$FM_PORT" --input-dir build/uploader/build build/uploader/ResourceUploader
+   ```
+
+3. With the uploader running, transfer the resource image:
+
+   ```sh
+   "$FM_PYTHON" scripts/assets.py upload build/fanmaster-assets.bin --port "$FM_PORT"
+   ```
+
+4. After `DONE verified`, build and flash the application:
+
+   ```sh
+   "$FM_PYTHON" scripts/build_firmware.py main --work-dir build/main
+   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port "$FM_PORT" --input-dir build/main/build build/main/fanmaster
+   ```
+
+### Windows PowerShell
+
+Set the actual COM port from `arduino-cli board list` or Device Manager. The
+call operator `&` invokes the Python path stored in `$FmPython`. Each command
+is a single line; do not use shell `\` line continuations in PowerShell.
+
+```powershell
+$FmPython = "./.venv/Scripts/python.exe"
+$FmPort = "COM5"
+arduino-cli board list
+```
+
+1. Pack and verify the files in `web/`:
+
+   ```powershell
+   & $FmPython scripts/assets.py pack --output build/fanmaster-assets.bin
+   & $FmPython scripts/assets.py verify build/fanmaster-assets.bin
+   ```
+
+2. Build and flash the uploader:
+
+   ```powershell
+   & $FmPython scripts/build_firmware.py uploader --work-dir build/uploader
+   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port $FmPort --input-dir build/uploader/build build/uploader/ResourceUploader
+   ```
+
+3. With the uploader running, transfer the resource image:
+
+   ```powershell
+   & $FmPython scripts/assets.py upload build/fanmaster-assets.bin --port $FmPort
+   ```
+
+4. After `DONE verified`, build and flash the application:
+
+   ```powershell
+   & $FmPython scripts/build_firmware.py main --work-dir build/main
+   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port $FmPort --input-dir build/main/build build/main/fanmaster
+   ```
+
+### Transfer results and subsequent updates
+
+The transfer script never guesses a port or flashes ESP32 firmware. It sets
+DTR/RTS low before opening native USB to avoid accidental ROM download mode.
+If the board stays in download mode, release BOOT, press RESET, identify the
+port again and retry. See [host troubleshooting](BUILDING.md#troubleshooting).
+
+The uploader erases only the sectors occupied by the new image, checks every
+page by reading it back, and verifies the image CRC. It writes the header last.
+`DONE verified` confirms the serial transfer and flash readback, not browser or
+radio acceptance. Updating resources replaces the old image; a failed or
+interrupted transfer requires another upload. Old trailing sectors are outside
+the new index and are never served.
+
+The OLED shows waiting/flash initialization, erase progress, write/readback
+progress in bytes and percent, CRC/header validation, header commit, then
+`Done verified`. An error replaces progress with its cause (for example
+`Serial timeout` or `CRC/header invalid`). Success appears only after final
+header readback passes. Updates use `Config::Oled::REFRESH_INTERVAL_MS` (250 ms),
+with immediate phase changes and completion updates. A missing OLED or failed
+I2C initialization leaves the serial uploader usable; display messages never
+enter the serial protocol.
+
+Application-only updates need just step 4 for your OS. They retain the external
+resource image and existing NVS credentials; do not perform a whole-chip erase.
+Changes to `web/` require the full sequence. Neither webpage needs Internet-hosted
+assets. Build/download tools need Internet only when dependencies are missing.
+
+### Arduino IDE
+
+Add `--prepare-only` to either build-script command to stage shared files without
+compiling. Open `build/main/fanmaster/fanmaster.ino` or
+`build/uploader/ResourceUploader/ResourceUploader.ino` in Arduino IDE, select
+ESP32S3 Dev Module and the actual port, and enable USB CDC On Boot to match the
+CLI target. Edit original sources in this checkout and stage again after changes.
+For a custom CLI or library location, pass `--arduino-cli "path/to/executable"`
+or `--libraries "path/to/libraries"` to the staging/build script. The optional
+[Apple Silicon ctags workaround](BUILDING.md#apple-silicon-ctags-issue) applies
+only to affected macOS toolchains.
 
 ## Resource format and serving
 
@@ -135,6 +201,23 @@ reader cannot hold up controls. `[LOCAL]` reports control-loop gaps separately
 from `[WEB]` network-task gaps. Measure both on the actual board.
 
 ## Provisioning behavior
+
+After restoring the application, use the host's Wi-Fi controls to join
+`Fanmaster-Setup-<random suffix>` if setup is active:
+
+| Host | Wi-Fi controls |
+| --- | --- |
+| macOS | Control Center or System Settings → Wi-Fi |
+| Linux desktop | Desktop Wi-Fi menu / NetworkManager connection settings |
+| Windows | Quick Settings or Settings → Network & Internet → Wi-Fi |
+
+Stay connected even if the OS reports no Internet, and manually open
+`http://192.168.4.1/` if a captive window does not appear. After saving and
+connecting successfully, the setup AP closes; reconnect the host to the target
+LAN and open `http://<station-IP>/` using the address shown on OLED/serial.
+The station IP is assigned by the LAN and is not necessarily the address from
+the hardware test report. Browser proxies/VPN routing can affect private
+addresses independently of the firmware.
 
 - No valid NVS record: immediately open `Fanmaster-Setup-<random suffix>`.
   A random suffix is generated once per boot and reused on retries; the
@@ -188,27 +271,17 @@ After checking /CS wiring, validate on the ESP32:
 
 ## Local verification
 
+On macOS/Linux, with the optional host-test tools installed:
+
 ```sh
 sh scripts/check_host.sh
 node tests/test_setup.mjs
 ```
 
-Host tests exercise the resource packer and serial handshake, Wi-Fi state and
+For prerequisites and the Windows/WSL host-test route, see
+[BUILDING.md](BUILDING.md#optional-host-checks). Host tests exercise the resource
+packer and serial handshake, Wi-Fi state and
 NVS failures, HTTP routing and streaming, recovery form, and interrupted uploader
 commits using in-memory peripheral substitutes. The JavaScript checks cover
 submission, stale responses, channel-change retries and terminal results.
 They do not establish successful SPI or Wi-Fi operation on the ESP32.
-
-The installed Arduino `ctags` binary on this Apple Silicon host is still Intel
-only and fails with `bad CPU type in executable`. Validation uses a temporary
-native build of Arduino ctags 5.8-arduino11 (with its reserved `__unused__` macro
-renamed to compile against the current macOS SDK), without changing the global
-Arduino installation. While that temporary tool is available, append:
-
-```sh
---build-property runtime.tools.ctags.path=/private/tmp/fanmaster-ctags-native/bin
-```
-
-This path is a local build workaround, not a firmware dependency. A native
-Arduino ctags installation or a working Intel compatibility runtime removes
-the need for the override.

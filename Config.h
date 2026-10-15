@@ -114,6 +114,8 @@ constexpr uint8_t PINS[COUNT] = {
 };
 constexpr bool ENABLE_INTERNAL_PULLUPS = false;
 constexpr uint32_t DEBOUNCE_MS = 30;
+constexpr uint32_t REPEAT_DELAY_MS = 1000;
+constexpr uint32_t REPEAT_INTERVAL_MS = 100;
 constexpr uint8_t DUTY_STEP_PERCENT = 5;
 constexpr uint8_t MODIFIED_DUTY_STEP_PERCENT = 1;
 }  // namespace Buttons

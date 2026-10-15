@@ -21,8 +21,10 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
 - Report every debounced button press and release on the serial console when
   Plotter Mode is disabled.
 - Show firmware version, fan RPM, duty, IP address, temperature and humidity on the OLED.
-- Adjust duty with buttons 1 and 2 in 5% steps, or 1% while button 3 is held.
-- Toggle the RGB status indication with button 4.
+- Adjust duty with buttons 1 and 2 in 5% steps, or 1% while function (button 4) is held.
+  Holding an adjustment button repeats after one second, then every 100 ms.
+- Toggle RGB status indication with function + button 3. A standalone button-3
+  click emits a reserved mode-switch event; duty control remains active.
 - Drive the SSD1306 dashboard and wrap the Sensirion arduino-sht sensor.
 - Provision Wi-Fi through a Captive Portal and save verified credentials in ESP32 NVS.
 - Retry station connections without blocking the local firmware loop.
@@ -72,8 +74,21 @@ SSD1306. The display, sensor, and WS2812 libraries are not vendored in this
 repository. Validation uses FastLED 3.10.7, arduino-sht 2.0.0, SPIMemory 3.4.0,
 and ESP32 Arduino core 3.3.12.
 
-See [FLASH_RESOURCES.md](FLASH_RESOURCES.md) for SPI wiring, resource packaging,
-the independent uploader firmware, application build/flash commands and setup flow.
+## Build and upload on macOS, Linux or Windows
+
+Start with [BUILDING.md](BUILDING.md) for tool installation, ESP32 support and
+libraries, Python virtual environments, serial-port discovery/permissions and
+optional host tests. It includes macOS/Linux shell and Windows PowerShell usage.
+
+Then follow [FLASH_RESOURCES.md](FLASH_RESOURCES.md#build-and-upload) for the
+complete resource pack → uploader flash → resource transfer → application flash
+sequence, with commands for each host environment. The guide also covers SPI
+wiring, OLED upload progress, Arduino IDE staging and Wi-Fi setup. Build outputs
+use the ignored `build/` directory; no machine-specific temporary path is needed.
+
+Linux and Windows instructions have not been exercised on those OSes in this
+session. [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) records the actual
+macOS/ESP32 measurements separately.
 
 ## Onboard LED response
 
@@ -103,7 +118,7 @@ For modes that flash, the low endpoint uses a 1200 ms interval and the high
 endpoint a 150 ms interval. Spectrum modes map the low endpoint to violet and
 the high endpoint to red. The LED remains off when the response is zero.
 
-Button 4 toggles the indication at runtime. Disabling it keeps the FastLED
+Function (button 4) + button 3 toggles the indication at runtime. Disabling it keeps the FastLED
 controller active but immediately writes black to the RGB LED.
 
 LED timing must remain non-blocking so fan control, TACH sampling, serial
@@ -210,12 +225,22 @@ local network and does not initially include authentication or TLS.
   `[WEB]` measures the separate network-task gaps.
 - The OLED refreshes at most once per 250 ms so display transfers leave time for
   input and network handling.
-- Buttons 1/2 adjust duty by 5%; holding button 3 changes the step to 1%.
-  Button 4 toggles RGB indication and transmits black immediately when disabled.
+- Buttons 1/2 adjust duty by 5%; holding function (button 4) changes the step to
+  1%. A press steps immediately; a one-second hold starts repetition every
+  100 ms. Configure `REPEAT_DELAY_MS` and `REPEAT_INTERVAL_MS` in `Config::Buttons`.
+  Opposing held adjustment buttons cancel; delayed loops never replay a burst
+  of missed repeat events. Duty remains clamped to 0–100%.
+- Function + button 3 toggles RGB indication once per button-3 hold, in either
+  press order. Releasing that chord does not emit a mode-switch event. A
+  standalone button-3 click emits `modeSwitchRequested` on release and logs it;
+  this is reserved for future duty/RPM mode selection. Duty control remains
+  active until RPM control is implemented. Button 4 alone has no action.
 
 ## Remaining roadmap
 
 - Add sensor recovery and explicit stale/error diagnostics after startup failures.
+- Implement RPM closed-loop control and consume the reserved button-3
+  duty/RPM mode-switch event.
 - Optionally calculate RPM from TACH interrupt timestamps, with a no-pulse
   timeout, to improve update latency for dependent features including the LED.
 - Validate SPI storage, Captive Portal behavior, NVS persistence and main-loop
@@ -232,17 +257,26 @@ local network and does not initially include authentication or TLS.
 | `SerialConsole.*` | Non-blocking serial duty commands |
 | `StatusLed.*` | WS2812 control with configurable duty/TACH visual response |
 | `I2cBus.*` | Shared configurable I2C bus |
-| `ButtonInputs.*` | Four active-low debounced digital inputs |
+| `ButtonInputs.*`, `ButtonControls.h` | Debounce, timed repeat, function chords and reserved mode-switch events |
 | `OledDisplay.*` | SSD1306 version, RPM, duty, IP and climate status interface |
 | `Sht30Sensor.*`, `ClimateReading.h` | Sensor reads and shared cached climate sample |
 | `WifiStation.*` | Non-blocking Wi-Fi station connection and retry |
 | `WebPanel.*` | Static resource streaming, recovery setup form and HTTP APIs |
 | `W25q64.*`, `AssetStore.*`, `AssetFormat.h` | SPIMemory adapter and checked read-only asset image |
 | `web/` | Web Panel and Captive Portal HTML/CSS/JS sources |
-| `tools/ResourceUploader/` | Separate serial-to-W25Q64 uploader sketch |
+| `tools/ResourceUploader/` | Separate serial-to-W25Q64 uploader with optional OLED progress |
 | `scripts/` | Resource pack/verify/upload and staged firmware builds |
+| `BUILDING.md`, `FLASH_RESOURCES.md` | Cross-platform tool setup, build, upload and provisioning guides |
 
 ## Build status
 
 The firmware targets `esp32:esp32:esp32s3` with ESP32 Arduino core 3.3.12 and
 FastLED 3.10.7 and SPIMemory 3.4.0.
+
+The button/OLED-uploader refinement compiles for `CDCOnBoot=cdc`: application
+1,028,671 bytes / 50,900 bytes static RAM; uploader 359,546 bytes / 23,960 bytes
+static RAM. `sh scripts/check_host.sh` covers debounce/repeat/chord behavior,
+OLED update pacing, headless uploads and failure/success display transitions,
+alongside existing state, HTTP and resource-integrity checks. These refinements
+have not yet been flashed or physically verified; the earlier hardware results
+are recorded separately in [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md).

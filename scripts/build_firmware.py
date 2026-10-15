@@ -26,7 +26,8 @@ def main():
     if args.target == 'main':
         sources = sorted(p for p in root.iterdir() if p.suffix in ('.cpp', '.h', '.ino'))
     else:
-        sources = [root / 'tools/ResourceUploader/ResourceUploader.ino']
+        sources = [root / 'tools/ResourceUploader' / name
+                   for name in ('ResourceUploader.ino', 'UploadDisplay.h')]
         sources += [root / p for p in ('Config.h', 'W25q64.h', 'W25q64.cpp', 'AssetFormat.h')]
     for source in sources:
         shutil.copy2(source, sketch / source.name)

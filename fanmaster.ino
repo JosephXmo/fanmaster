@@ -3,6 +3,7 @@
 #include <freertos/task.h>
 
 #include "ButtonInputs.h"
+#include "ButtonControls.h"
 #include "Config.h"
 #include "ClimateReading.h"
 #include "FanController.h"
@@ -21,6 +22,7 @@ I2cBus peripheralBus;
 OledDisplay oled(peripheralBus.wire());
 Sht30Sensor sht30;
 ButtonInputs buttons;
+ButtonControls buttonControls;
 SerialConsole console;
 StatusLed statusLed;
 WifiStation wifiStation;
@@ -75,34 +77,19 @@ void reportButtonEvents()
     }
 }
 
-void adjustDutyFromButtons()
+void applyButtonActions()
 {
-    const bool increase = buttons.wasPressed(ButtonId::Button1);
-    const bool decrease = buttons.wasPressed(ButtonId::Button2);
-
-    if (increase == decrease) {
-        return;
+    const ButtonActions actions = buttonControls.update(buttons);
+    if (actions.dutyDelta) {
+        int16_t nextDuty = fan.dutyPercent() + actions.dutyDelta;
+        if (nextDuty < 0) nextDuty = 0;
+        if (nextDuty > 100) nextDuty = 100;
+        fan.setDutyPercent(static_cast<uint8_t>(nextDuty));
     }
-
-    const uint8_t step = buttons.isPressed(ButtonId::Button3)
-        ? Config::Buttons::MODIFIED_DUTY_STEP_PERCENT
-        : Config::Buttons::DUTY_STEP_PERCENT;
-    const int16_t signedStep = increase ? step : -step;
-    int16_t nextDuty = fan.dutyPercent() + signedStep;
-
-    if (nextDuty < 0) {
-        nextDuty = 0;
-    } else if (nextDuty > 100) {
-        nextDuty = 100;
-    }
-
-    fan.setDutyPercent(static_cast<uint8_t>(nextDuty));
-}
-
-void toggleStatusLedFromButton()
-{
-    if (buttons.wasPressed(ButtonId::Button4)) {
-        statusLed.toggleEnabled();
+    if (actions.toggleLed) statusLed.toggleEnabled();
+    // Reserved event only: RPM closed-loop control will be implemented later.
+    if (actions.modeSwitchRequested && !Config::SerialConsole::PLOTTER_MODE) {
+        Serial.println("[BUTTON] mode switch requested; duty control remains active (RPM control pending)");
     }
 }
 
@@ -157,8 +144,7 @@ void serviceLocalControls()
 {
     buttons.update();
     reportButtonEvents();
-    adjustDutyFromButtons();
-    toggleStatusLedFromButton();
+    applyButtonActions();
     console.update(fan);
 
     float rpm;
