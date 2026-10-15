@@ -2,23 +2,18 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include "AssetStore.h"
+#include "ClimateReading.h"
 
 class FanController;
 class WifiStation;
-class Sht30Sensor;
 
 class WebPanel {
 public:
     WebPanel();
 
-    void begin(
-        FanController &fan,
-        WifiStation &wifiStation,
-        Sht30Sensor &sht30Sensor,
-        bool &hasClimateReading,
-        float &temperatureC,
-        float &humidityPercent
-    );
+    void begin(FanController &fan, WifiStation &wifiStation,
+               void (*serviceLocalControls)(), const ClimateReading &climate);
     void update();
 
 private:
@@ -27,6 +22,10 @@ private:
     void handleRoot();
     void handleStatus();
     void handleSetDuty();
+    void handleProvision();
+    void handleWifiStatus();
+    void handleSetup();
+    bool serveAsset(const char *path);
     void handleNotFound();
     void sendJson(int statusCode, const char *body);
     bool parseDutyArgument(uint8_t &dutyResult) const;
@@ -34,10 +33,9 @@ private:
     WebServer server_;
     FanController *fan_ = nullptr;
     WifiStation *wifiStation_ = nullptr;
-    Sht30Sensor *sht30Sensor_ = nullptr;
-    bool *hasClimateReading_ = nullptr;
-    float *temperatureC_ = nullptr;
-    float *humidityPercent_ = nullptr;
+    const ClimateReading *climate_ = nullptr;
+    AssetStore assets_;
+    void (*serviceLocalControls_)() = nullptr;
     bool started_ = false;
     uint32_t requestCount_ = 0;
     uint32_t lastUpdateMs_ = 0;

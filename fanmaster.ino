@@ -2,6 +2,7 @@
 
 #include "ButtonInputs.h"
 #include "Config.h"
+#include "ClimateReading.h"
 #include "FanController.h"
 #include "I2cBus.h"
 #include "OledDisplay.h"
@@ -23,9 +24,7 @@ StatusLed statusLed;
 WifiStation wifiStation;
 WebPanel webPanel;
 uint32_t lastOledRefreshMs = 0;
-bool hasClimateReading = false;
-float latestTemperatureC = 0.0f;
-float latestHumidityPercent = 0.0f;
+ClimateReading climate;
 uint32_t lastSht30SampleMs = 0;
 
 void haltAfterStartupError()
@@ -123,16 +122,16 @@ void updateOled()
         wifiStation.isConnected(),
         wifiStation.localIp(),
         Config::VERSION,
-        hasClimateReading,
-        latestTemperatureC,
-        latestHumidityPercent
+        climate.valid,
+        climate.temperatureC,
+        climate.humidityPercent
     );
 }
 
 void sampleSht30()
 {
     if (!sht30.isReady()) {
-        hasClimateReading = false;
+        climate.valid = false;
         return;
     }
 
@@ -145,12 +144,31 @@ void sampleSht30()
     float temperatureC;
     float humidityPercent;
     if (sht30.read(temperatureC, humidityPercent)) {
-        latestTemperatureC = temperatureC;
-        latestHumidityPercent = humidityPercent;
-        hasClimateReading = true;
+        climate.temperatureC = temperatureC;
+        climate.humidityPercent = humidityPercent;
+        climate.valid = true;
     } else {
-        hasClimateReading = false;
+        climate.valid = false;
     }
+}
+
+void serviceLocalControls()
+{
+    buttons.update();
+    reportButtonEvents();
+    adjustDutyFromButtons();
+    toggleStatusLedFromButton();
+    console.update(fan);
+
+    float rpm;
+    if (fan.updateRpm(rpm)) {
+        statusLed.setRpm(rpm);
+        reportFanState(rpm);
+    }
+
+    statusLed.setDutyPercent(fan.dutyPercent());
+    statusLed.update();
+    updateOled();
 }
 
 }  // namespace
@@ -206,36 +224,15 @@ void setup()
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
 
     wifiStation.begin();
-    webPanel.begin(
-        fan,
-        wifiStation,
-        sht30,
-        hasClimateReading,
-        latestTemperatureC,
-        latestHumidityPercent
-    );
+    webPanel.begin(fan, wifiStation, serviceLocalControls, climate);
 }
 
 void loop()
 {
     wifiStation.update();
-    webPanel.update();
-    buttons.update();
-    reportButtonEvents();
-    adjustDutyFromButtons();
-    toggleStatusLedFromButton();
-    console.update(fan);
     sampleSht30();
-
-    float rpm;
-    if (fan.updateRpm(rpm)) {
-        statusLed.setRpm(rpm);
-        reportFanState(rpm);
-    }
-
-    statusLed.setDutyPercent(fan.dutyPercent());
-    statusLed.update();
-    updateOled();
+    webPanel.update();
+    serviceLocalControls();
 
     delay(1);
 }

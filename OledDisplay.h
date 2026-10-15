@@ -15,7 +15,7 @@ public:
         uint8_t dutyPercent,
         bool wifiConnected,
         const IPAddress &ipAddress,
-        const String &macAddress,
+        const String &version,
         bool hasClimateReading,
         float temperatureC,
         float humidityPercent
