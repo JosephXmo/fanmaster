@@ -277,6 +277,10 @@ The button/OLED-uploader refinement compiles for `CDCOnBoot=cdc`: application
 1,028,671 bytes / 50,900 bytes static RAM; uploader 359,546 bytes / 23,960 bytes
 static RAM. `sh scripts/check_host.sh` covers debounce/repeat/chord behavior,
 OLED update pacing, headless uploads and failure/success display transitions,
-alongside existing state, HTTP and resource-integrity checks. These refinements
-have not yet been flashed or physically verified; the earlier hardware results
-are recorded separately in [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md).
+alongside existing state, HTTP and resource-integrity checks. Both refinements
+have now been rebuilt and flashed on the connected ESP32-S3, and resource
+readback, NVS reconnection, HTTP and local-loop behavior were measured. The user
+confirmed physical-button behavior and watched OLED progress through the final
+`Done verified / 100%` screen. After a host-network interruption was resolved,
+all six resources and 12 consecutive status reads passed a final network check.
+See [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measurements and limits.

@@ -246,3 +246,9 @@ Python build command:
 The earlier local path `/private/tmp/fanmaster-ctags-native/bin` is specific to
 that machine. It is not a repository dependency and should not be copied into
 Linux or Windows commands. A normal compatible toolchain needs no override.
+
+After that temporary directory was cleared, the same host's native tool was
+rebuilt at `build/tools/arduino-ctags/bin/ctags` inside this checkout. For that
+local installation, pass the absolute path to `build/tools/arduino-ctags/bin`
+as `runtime.tools.ctags.path`. The ignored build directory is not distributed
+with Git; another checkout must supply its own compatible tool if needed.

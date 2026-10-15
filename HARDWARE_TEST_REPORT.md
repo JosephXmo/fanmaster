@@ -1,8 +1,8 @@
 # ESP32-S3-Zero hardware acceptance — 2026-10-15
 
 This records measured results from the connected Waveshare ESP32-S3-Zero,
-not just host substitutes or successful compilation. Firmware starts from
-merge commit `858150f` (version 1.4), with the working-tree fixes described below.
+not just host substitutes or successful compilation. The initial round used
+merge commit `858150f` (version 1.4) with fixes later committed as `26e14ea`.
 
 ## Target and upload
 
@@ -97,3 +97,72 @@ Automated browser rendering was not verified: the embedded Codex browser first
 returned `ERR_BLOCKED_BY_CLIENT`, and a subsequent inspection was denied by its
 URL security policy. The user's confirmation, source-server HTTP measurements
 and successful captive-portal interaction are separate evidence.
+
+## Refinement acceptance at aadcd64
+
+This follow-up uses the committed button-repeat/function-key and OLED-uploader
+refinements, on the same board and `/dev/cu.usbmodem101`.
+
+- The previous temporary ctags installation had been deleted. Arduino ctags
+  5.8-arduino11 was rebuilt as a native ARM64 executable at
+  `build/tools/arduino-ctags/bin/ctags`, using the official source tag and
+  renaming its reserved `__unused__` macro for compatibility with the macOS SDK.
+  The rebuilt tool is outside `/tmp`; it does not replace global Arduino tools.
+- Both firmware builds passed using that ctags override. The application uses
+  1,028,671 bytes of program storage and 50,900 bytes static RAM; the uploader
+  uses 359,546 bytes and 23,960 bytes respectively.
+- The OLED uploader was flashed, with esptool hash verification. The resource
+  image again contained six files / 23,134 bytes (whole-image CRC32 `e1f98a63`).
+  Actual serial transfer took approximately one second and returned
+  `DONE verified`, including page readback, CRC and final header readback.
+- The application was then flashed back with esptool hash verification, without
+  erasing NVS. It automatically reconnected to `192.168.30.215` about 3.3 seconds
+  into the serial observation. The board was left running the application at
+  35% duty, with LED indication enabled.
+- `/` returned HTTP 200 and matched the dashboard. The other five accessible
+  HTML/CSS/JS resources also matched source bytes. `/setup` and configuration
+  POST returned 403 after the setup AP closed.
+- Thirty requests with three concurrent clients all succeeded; maximum request
+  time was 3.511 seconds. HTTP duty changes to 40% and back to 35% succeeded.
+- An intentionally incomplete header produced a network-task gap of 5,626 ms.
+  Across 227.9 seconds of serial observation, the local-loop gap peaked at 47 ms
+  and settled to 28 ms per reporting window. There was one initial USB-induced
+  boot and no observed watchdog/panic or subsequent reboot. Fan RPM updates
+  continued throughout; the latest successful HTTP sample reported 780 RPM,
+  35% duty, 23.2°C and 60.9% RH.
+- Later continuous status polling timed out. A subsequent host check found
+  `en0` at `10.253.43.254`, with the route to the device now using gateway
+  `10.253.0.1`, rather than a direct device-subnet route. Three retries also
+  timed out. Serial continued showing local and network task updates without
+  resets. Continued HTTP acceptance needs a host route to the device network;
+  the initial successful HTTP/concurrency results are not a pass for the
+  later unreachable-network interval.
+- The user confirmed the requested physical checks all behaved normally:
+  button-1/2 taps and holds, the one-second wait before continuous adjustment,
+  function/button-4 fine adjustment, function + button 3 LED toggle, no LED
+  toggle on button 4 alone, no duty change on standalone button 3, and continued
+  OLED/fan operation. This is user-observed physical acceptance; no button
+  edges were recorded in the earlier serial observation.
+- OLED acceptance was repeated with the user watching. After another verified
+  uploader flash and PONG, the user confirmed `FANMASTER UPLOADER / Waiting for
+  host`. Host-side pacing of 120 ms per page extended the same 23,134-byte upload
+  to 13.475 seconds without changing firmware or the upload protocol. It again
+  returned `DONE verified`, and the user confirmed both increasing progress and
+  the final `Done verified / 100%` screen. The application was restored only
+  after that visual confirmation.
+- After the host returned to `192.168.30.152`, the application was reflashed
+  with hash verification and reconnected through the retained NVS record.
+  A fresh 30-second run matched all six external resources (including setup
+  HTML) against source, matched `/` to the dashboard, confirmed setup/configure
+  remained closed with HTTP 403, and completed 12 consecutive status reads.
+  Final sampled state: 750 RPM, 35% duty, Wi-Fi connected, 25.5°C and 74.9% RH.
+  Local-loop gaps peaked at 47 ms, with no observed watchdog/panic or extra
+  reboot. This follow-up passed and resolves the earlier HTTP retest pending
+  restoration of host network access.
+
+Follow-up build/flash logs and measurements are stored separately under the
+ignored `build/refine-acceptance/` directory so initial-round evidence remains
+available. `oled-retry-upload.log` records the paced visual check;
+`restored-network-runtime.log` and `restored-network-results.json` record the
+successful final application/network check. The board is left running the
+application at 35% duty with LED indication enabled and its NVS intact.
