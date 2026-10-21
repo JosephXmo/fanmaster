@@ -10,6 +10,8 @@ public:
 
     bool begin();
     bool isReady() const;
+    void requestPowerHint();
+    void showPowerOff(bool waitingForKey);
     void showStatus(
         float rpm,
         uint8_t dutyPercent,
@@ -28,4 +30,8 @@ public:
 private:
     Adafruit_SSD1306 display_;
     bool ready_ = false;
+    enum class View : uint8_t { Unknown, Status, BootPrompt, PowerHint, Off };
+    View view_ = View::Unknown;
+    bool hintActive_ = false;
+    uint32_t hintStartedAtMs_ = 0;
 };

@@ -370,6 +370,8 @@
       *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
     }
 
+    .power-control { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
+    #powerToggle[aria-pressed="true"] { background: var(--mint); }
     .thermal { grid-column: 1 / -1; padding: 30px; }
     .thermal-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
     .thermal-heading h2 { margin-bottom: 0; }

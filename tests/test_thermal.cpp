@@ -1,3 +1,4 @@
+#include "StartFan.h"
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -31,7 +32,7 @@ void controlTests()
 {
     fakeMillis = 0;
     FanController fan;
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     assert(!fan.setThermalEnabled(true));
     fan.setDutyPercent(42);
     fan.updateTemperature({true, 32.5f, 55, millis()});
@@ -93,7 +94,7 @@ void memoryTests()
     FanController fan;
     OperatingMemory memory;
     memory.begin(fan);
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     assert(fan.dutyPercent() == 43 && fan.snapshot().targetRpm == 930);
     ThermalCurve c;
     c.points[0] = {253, 37};

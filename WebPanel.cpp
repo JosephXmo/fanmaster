@@ -29,6 +29,7 @@ void WebPanel::begin(FanController &fan, WifiStation &wifiStation,
     server_.on("/api/fan/duty", HTTP_POST, [this]() { handleSetDuty(); });
     server_.on("/api/fan/rpm", HTTP_POST, [this]() { handleSetRpm(); });
     server_.on("/api/fan/mode", HTTP_POST, [this]() { handleSetMode(); });
+    server_.on("/api/fan/power", HTTP_POST, [this]() { handlePower(); });
     server_.on("/api/thermal/mode", HTTP_POST, [this]() { handleThermalMode(); });
     server_.on("/api/thermal/curve", HTTP_POST, [this]() { handleThermalCurve(); });
     server_.on("/setup", HTTP_GET, [this]() { handleSetup(); });
@@ -218,11 +219,12 @@ void WebPanel::sendStatus()
         snprintf(temperature, sizeof(temperature), "%.1f", sample.temperatureC);
         snprintf(humidity, sizeof(humidity), "%.1f", sample.humidityPercent);
     }
-    char response[768];
+    char response[896];
     snprintf(
         response,
         sizeof(response),
         "{\"rpm\":%lu,\"duty_percent\":%u,\"wifi_connected\":%s,"
+        "\"power_enabled\":%s,\"power_starting\":%s,\"power_waiting_for_key\":%s,"
         "\"temperature_c\":%s,\"humidity_percent\":%s,\"poll_interval_ms\":%lu,"
         "\"mode\":\"%s\",\"target_rpm\":%lu,\"manual_duty_percent\":%u,"
         "\"min_rpm\":%lu,\"max_rpm\":%lu,\"control_revision\":%lu,"
@@ -232,6 +234,9 @@ void WebPanel::sendStatus()
         static_cast<unsigned long>(roundedRpm),
         state.appliedDutyPercent,
         wifiStation_->isConnected() ? "true" : "false",
+        state.powerEnabled ? "true" : "false",
+        state.powerStarting ? "true" : "false",
+        state.waitingForPowerKey ? "true" : "false",
         temperature,
         humidity,
         static_cast<unsigned long>(Config::Web::POLL_INTERVAL_MS),
@@ -264,7 +269,7 @@ void WebPanel::handleSetDuty()
     }
 
     if (!fan_->setDutyPercent(requestedDuty)) {
-        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        sendJson(409, "{\"error\":\"Power on the fan and exit THERMAL before changing fixed controls\"}");
         return;
     }
     sendStatus();
@@ -279,7 +284,7 @@ void WebPanel::handleSetRpm()
         return;
     }
     if (!fan_->setTargetRpm(rpm)) {
-        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        sendJson(409, "{\"error\":\"Power on the fan and exit THERMAL before changing fixed controls\"}");
         return;
     }
     sendStatus();
@@ -298,7 +303,7 @@ void WebPanel::handleSetMode()
         return;
     }
     if (!fan_->setMode(mode == "rpm" ? FanMode::Rpm : FanMode::Duty)) {
-        sendJson(409, "{\"error\":\"Exit THERMAL before changing fixed controls\"}");
+        sendJson(409, "{\"error\":\"Power on the fan and exit THERMAL before changing fixed controls\"}");
         return;
     }
     sendStatus();
@@ -313,9 +318,21 @@ void WebPanel::handleThermalMode()
         return;
     }
     if (!fan_->setThermalEnabled(enabled != 0)) {
-        sendJson(409, "{\"error\":\"A fresh temperature reading is required to enable THERMAL\"}");
+        sendJson(409, "{\"error\":\"Fan power and a fresh temperature reading are required to enable THERMAL\"}");
         return;
     }
+    sendStatus();
+}
+
+void WebPanel::handlePower()
+{
+    recordRequest("POST /api/fan/power", true);
+    uint32_t enabled;
+    if (!parseUnsignedArgument("enabled", 1, enabled)) {
+        sendJson(400, "{\"error\":\"enabled must be 0 or 1\"}");
+        return;
+    }
+    fan_->setPowerEnabled(enabled != 0);
     sendStatus();
 }
 

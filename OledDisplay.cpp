@@ -29,6 +29,40 @@ bool OledDisplay::isReady() const
     return ready_;
 }
 
+void OledDisplay::requestPowerHint()
+{
+    hintActive_ = true;
+    hintStartedAtMs_ = millis();
+}
+
+void OledDisplay::showPowerOff(bool waitingForKey)
+{
+    if (!ready_) return;
+    if (hintActive_ && millis() - hintStartedAtMs_ >= Config::Power::HINT_MS)
+        hintActive_ = false;
+    const View next = waitingForKey ? View::BootPrompt : hintActive_ ? View::PowerHint : View::Off;
+    if (next == view_) return;
+    if (next == View::Off) {
+        display_.ssd1306_command(SSD1306_DISPLAYOFF);
+    } else {
+        display_.clearDisplay();
+        display_.setTextColor(SSD1306_WHITE);
+        display_.setTextSize(1);
+        display_.setTextWrap(false);
+        display_.setCursor(0, 14);
+        display_.print(waitingForKey ? "Press any key to" : "Hold ^ and * for");
+        display_.setCursor(0, 26);
+        display_.print(waitingForKey ? "power on." : "1 second to power on");
+        if (!waitingForKey) {
+            display_.setCursor(0, 38);
+            display_.print("the fan.");
+        }
+        display_.display();
+        display_.ssd1306_command(SSD1306_DISPLAYON);
+    }
+    view_ = next;
+}
+
 void OledDisplay::showStatus(
     float rpm,
     uint8_t dutyPercent,
@@ -97,6 +131,9 @@ void OledDisplay::showStatus(
     }
 
     display_.display();
+    if (view_ != View::Status) display_.ssd1306_command(SSD1306_DISPLAYON);
+    view_ = View::Status;
+    hintActive_ = false;
 }
 
 Adafruit_SSD1306 &OledDisplay::device()

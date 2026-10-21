@@ -18,6 +18,7 @@ public:
     void update();
 
     bool isPressed(ButtonId button) const;
+    bool isRawPressed(ButtonId button) const;
     bool wasPressed(ButtonId button) const;
     bool wasReleased(ButtonId button) const;
     bool wasRepeated(ButtonId button) const;

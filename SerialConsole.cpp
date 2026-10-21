@@ -45,7 +45,7 @@ void SerialConsole::processCommand(FanController &fan)
 
     if (strcmp(input, "mode duty") == 0 || strcmp(input, "mode rpm") == 0) {
         const bool changed = fan.setMode(strcmp(input, "mode rpm") == 0 ? FanMode::Rpm : FanMode::Duty);
-        Serial.println(changed ? "Control mode updated." : "Ignored: exit THERMAL first.");
+        Serial.println(changed ? "Control mode updated." : "Ignored: power on the fan and exit THERMAL first.");
         return;
     }
     if (strncmp(input, "rpm ", 4) == 0) {
@@ -56,7 +56,7 @@ void SerialConsole::processCommand(FanController &fan)
             rpm > Config::RpmControl::MAX_RPM || rpm < Config::RpmControl::MIN_RPM) {
             Serial.println("Ignored: RPM must be a whole number within Config limits.");
         } else if (!fan.setTargetRpm(static_cast<uint32_t>(rpm))) {
-            Serial.println("Ignored: exit THERMAL first.");
+            Serial.println("Ignored: power on the fan and exit THERMAL first.");
         } else {
             Serial.println("RPM target updated; RPM control active.");
         }
@@ -77,7 +77,7 @@ void SerialConsole::processCommand(FanController &fan)
     }
 
     if (!fan.setDutyPercent(static_cast<uint8_t>(requestedDuty))) {
-        Serial.println("Ignored: exit THERMAL first.");
+        Serial.println("Ignored: power on the fan and exit THERMAL first.");
         return;
     }
 

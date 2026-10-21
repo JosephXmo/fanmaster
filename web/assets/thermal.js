@@ -61,7 +61,7 @@
     const active = state?.mode === 'thermal';
     el('thermalToggle').textContent = active ? 'THERMAL on · Return to fixed' : 'Enable temperature control';
     el('thermalToggle').setAttribute('aria-pressed', String(active));
-    el('thermalToggle').disabled = busy || !state || !active && !state.thermal_sensor_ready;
+    el('thermalToggle').disabled = busy || !state || state.power_enabled === false || !active && !state.thermal_sensor_ready;
     el('saveThermal').disabled = busy || !state;
     [...temperatures, ...duties].forEach(input => { input.disabled = busy || !state; });
     if (!state) return;
@@ -72,13 +72,14 @@
       });
       preview();
     }
-    el('thermalState').textContent = active ? 'THERMAL controls the applied duty. Fixed controls are paused.'
+    el('thermalState').textContent = state.power_enabled === false ? 'Fan power is off. The saved curve remains editable; power on to use temperature control.'
+      : active ? 'THERMAL controls the applied duty. Fixed controls are paused.'
       : state.thermal_exit_reason === 'sensor' ? 'Temperature unavailable: restored the previous fixed mode. Enable again after recovery.'
       : !state.thermal_sensor_ready ? 'Waiting for a fresh temperature reading.'
       : 'Fixed control active. Your previous Duty / RPM setting is preserved while THERMAL runs.';
   });
   el('thermalToggle').addEventListener('click', async () => {
-    if (busy || !state) return;
+    if (busy || !state || state.power_enabled === false) return;
     try {
       const next = await window.fanmaster.command('/api/thermal/mode', { enabled: state.mode === 'thermal' ? '0' : '1' });
       message(next.mode === 'thermal' ? 'Temperature control enabled.' : 'Previous fixed setting restored.');

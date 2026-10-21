@@ -24,6 +24,7 @@ inline void portENTER_CRITICAL_ISR(int *) {}
 inline void portEXIT_CRITICAL_ISR(int *) {}
 constexpr int INPUT = 0, OUTPUT = 1, HIGH = 1, LOW = 0, INPUT_PULLUP = 2, FALLING = 3;
 inline std::array<int, 64> fakePinLevels = [] { std::array<int, 64> pins{}; pins.fill(HIGH); return pins; }();
+inline std::array<int, 64> fakePinModes{};
 inline int digitalRead(int pin) { return fakePinLevels.at(pin); }
 inline bool ledcAttach(int, int, int) { return true; }
 inline int fakePwmValue = -1;
@@ -31,8 +32,8 @@ inline void ledcWrite(int, int value) { fakePwmValue = value; }
 inline int digitalPinToInterrupt(int pin) { return pin; }
 inline void (*fakeTachInterrupt)() = nullptr;
 inline void attachInterrupt(int, void (*callback)(), int) { fakeTachInterrupt = callback; }
-inline void pinMode(int, int) {}
-inline void digitalWrite(int, int) {}
+inline void pinMode(int pin, int mode) { fakePinModes.at(pin) = mode; }
+inline void digitalWrite(int pin, int value) { fakePinLevels.at(pin) = value; }
 class String {
 public:
     String() = default;

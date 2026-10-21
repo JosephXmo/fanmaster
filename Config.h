@@ -9,6 +9,7 @@ constexpr char VERSION[] = "1.4";
 namespace Pins {
 constexpr uint8_t FAN_TACH = 1;
 constexpr uint8_t FAN_PWM = 2;
+constexpr uint8_t FAN_POWER = 13;
 constexpr uint8_t RGB_LED = 21;
 // External W25Q64, ordinary single-bit SPI. CS must be driven, not tied high.
 constexpr uint8_t FLASH_SCK = 11;
@@ -43,6 +44,14 @@ constexpr uint32_t PWM_MAX_VALUE = (1UL << PWM_RESOLUTION_BITS) - 1;
 constexpr uint8_t DEFAULT_DUTY_PERCENT = 35;
 constexpr uint32_t STARTUP_TIME_MS = 1000;
 }  // namespace Fan
+
+namespace Power {
+// GPIO drives the input of a relay module, never a bare relay coil.
+constexpr bool RELAY_ACTIVE_HIGH = true;
+constexpr uint32_t SHUTDOWN_HOLD_MS = 8000;
+constexpr uint32_t WAKE_HOLD_MS = 1000;
+constexpr uint32_t HINT_MS = 1500;
+}  // namespace Power
 
 namespace RpmControl {
 // Choose limits attainable by the attached fan; these are setpoint bounds.

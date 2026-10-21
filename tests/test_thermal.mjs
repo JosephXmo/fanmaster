@@ -14,6 +14,7 @@ function el(id) {
 let state = {
   mode: 'duty', fixed_mode: 'duty', manual_duty_percent: 42, duty_percent: 42, target_rpm: 930,
   min_rpm: 550, max_rpm: 1700, rpm: 900, wifi_connected: true, thermal_sensor_ready: true,
+  power_enabled: true,
   thermal_exit_reason: 'none', thermal_points: [
     {temperature_c: 25, duty_percent: 35}, {temperature_c: 40, duty_percent: 65}, {temperature_c: 80, duty_percent: 90},
   ],
@@ -29,7 +30,9 @@ const context = vm.createContext({
     if (options.method === 'POST') {
       if (holdPost) await new Promise(resolve => { releasePost = resolve; });
       if (rejectPost) return { ok: false, status: 409, json: async () => ({ error: 'Sensor unavailable' }) };
-      if (url === '/api/thermal/mode') {
+      if (url === '/api/fan/power') {
+        state.power_enabled = options.body.get('enabled') === '1';
+      } else if (url === '/api/thermal/mode') {
         if (options.body.get('enabled') === '1') {
           state.fixed_mode = state.mode;
           state.mode = 'thermal'; state.duty_percent = 50;
@@ -120,6 +123,19 @@ assert.equal(el('applyButton').disabled, true);
 await poll();
 assert.equal(el('thermalToggle').disabled, true);
 releasePost(); await pending;
+assert.equal(el('thermalToggle').disabled, false);
+assert.equal(el('applyButton').disabled, true);
+holdPost = false;
+await el('powerToggle').click();
+assert.equal(state.power_enabled, false);
+assert.equal(state.mode, 'thermal', 'Power-off retains the current mode');
+assert.equal(el('thermalToggle').disabled, true);
+assert.equal(el('saveThermal').disabled, false, 'Curve can still be edited while off');
+const offCount = requests.length;
+await el('thermalToggle').click();
+assert.equal(requests.length, offCount, 'Disabled thermal handler cannot change mode while off');
+await el('powerToggle').click();
+assert.equal(state.mode, 'thermal');
 assert.equal(el('thermalToggle').disabled, false);
 assert.equal(el('applyButton').disabled, true);
 console.log('Thermal widget bounds, preview, commands, local synchronization, sensor fallback and stale-poll tests passed');

@@ -291,6 +291,7 @@ They do not establish successful SPI or Wi-Fi operation on the ESP32.
 The three-point THERMAL widget adds `/assets/thermal.js` to the external image
 (seven resources total). Repack and upload the complete image and rebuild/flash
 the main application using the existing sequence above on each host OS. The
-uploader firmware and protocol are unchanged. Update assets and firmware
+uploader transfer protocol is unchanged. The current uploader also forces the
+fan supply relay off. Update assets and firmware
 together, then reload the panel. See [THERMAL_CONTROL.md](THERMAL_CONTROL.md) for
 mode restoration, sensor fallback, NVS migration and acceptance checks.

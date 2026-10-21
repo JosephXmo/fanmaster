@@ -1,6 +1,7 @@
 #include "FanController.h"
 
 #include "Config.h"
+#include "FanPowerOutput.h"
 
 static_assert(Config::RpmControl::MIN_RPM > 0 &&
               Config::RpmControl::MIN_RPM <= Config::RpmControl::DEFAULT_RPM &&
@@ -22,6 +23,7 @@ FanController *FanController::interruptOwner_ = nullptr;
 
 bool FanController::begin()
 {
+    initializePowerOutput();
     const bool pwmAttached = ledcAttach(
         Config::Pins::FAN_PWM,
         Config::Fan::PWM_FREQUENCY_HZ,
@@ -32,9 +34,7 @@ bool FanController::begin()
         return false;
     }
 
-    applyDutyLocked(100);  // Startup only, before tasks start; never memorize the kick.
-    delay(Config::Fan::STARTUP_TIME_MS);
-    applyDutyLocked(manualDutyPercent_);
+    applyDutyLocked(0); // Boot waits for a physical key or explicit web power-on.
 
     // A 4.7k-10k external pull-up to 3.3V is recommended for TACH.
     pinMode(Config::Pins::FAN_TACH, INPUT_PULLUP);
@@ -49,14 +49,62 @@ bool FanController::begin()
     return true;
 }
 
+void FanController::initializePowerOutput()
+{
+    FanPowerOutput::begin();
+}
+
+void FanController::setPowerEnabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(dutyMutex_);
+    if (powerEnabled_ == enabled) return;
+    ++controlRevision_;
+    if (!enabled) {
+        // Keep control mode/setpoints; do not remember PI or thermal output as Duty.
+        resumeDutyPercent_ = powerStarting_ ? resumeDutyPercent_ : currentDutyPercent_.load();
+        FanPowerOutput::setEnabled(false);
+        powerEnabled_ = false;
+        powerStarting_ = false;
+        applyDutyLocked(0);
+        return;
+    }
+    powerEnabled_ = true;
+    waitingForPowerKey_ = false;
+    powerStarting_ = true;
+    powerStartedAtMs_ = millis();
+    // Start with full PWM before closing the relay; finish asynchronously.
+    applyDutyLocked(100);
+    FanPowerOutput::setEnabled(true);
+}
+
+void FanController::updatePower()
+{
+    std::lock_guard<std::mutex> lock(dutyMutex_);
+    if (!powerEnabled_ || !powerStarting_ ||
+        millis() - powerStartedAtMs_ < Config::Fan::STARTUP_TIME_MS) return;
+    powerStarting_ = false;
+    if (mode_ == FanMode::Thermal && !temperatureReadyLocked(millis()))
+        exitThermalLocked(ThermalExitReason::Sensor);
+    const uint8_t duty = mode_ == FanMode::Thermal
+        ? static_cast<uint8_t>(thermalCurve_.dutyAt(thermalSample_.temperatureC) + 0.5f)
+        : mode_ == FanMode::Duty ? manualDutyPercent_ : resumeDutyPercent_;
+    applyDutyLocked(duty);
+    regulator_.reset(duty);
+    // Exclude stopped/coasting and kick pulses from the first feedback window.
+    portENTER_CRITICAL(&tachMux_);
+    rpmWindowPulseCount_ = 0;
+    portEXIT_CRITICAL(&tachMux_);
+    lastRpmSampleMs_ = millis();
+}
+
 bool FanController::setDutyPercent(uint8_t dutyPercent)
 {
     // Serialize HTTP and local setters so the cached duty matches the PWM write.
     std::lock_guard<std::mutex> lock(dutyMutex_);
-    if (mode_ == FanMode::Thermal) return false;
+    if (!powerEnabled_ || mode_ == FanMode::Thermal) return false;
     setModeLocked(FanMode::Duty);
     manualDutyPercent_ = std::min<uint8_t>(dutyPercent, 100);
-    applyDutyLocked(manualDutyPercent_);
+    if (!powerStarting_) applyDutyLocked(manualDutyPercent_);
     ++controlRevision_;
     return true;
 }
@@ -83,7 +131,7 @@ bool FanController::setTargetRpm(uint32_t rpm)
 {
     if (rpm < Config::RpmControl::MIN_RPM || rpm > Config::RpmControl::MAX_RPM) return false;
     std::lock_guard<std::mutex> lock(dutyMutex_);
-    if (mode_ == FanMode::Thermal) return false;
+    if (!powerEnabled_ || mode_ == FanMode::Thermal) return false;
     setModeLocked(FanMode::Rpm);
     targetRpm_ = rpm;
     ++controlRevision_;
@@ -105,14 +153,14 @@ void FanController::setModeLocked(FanMode mode)
     if (mode == FanMode::Thermal) fixedMode_ = mode_;
     mode_ = mode;
     ++controlRevision_;
-    if (mode_ == FanMode::Duty) applyDutyLocked(manualDutyPercent_);
+    if (mode_ == FanMode::Duty && powerEnabled_ && !powerStarting_) applyDutyLocked(manualDutyPercent_);
     else if (mode_ == FanMode::Rpm) regulator_.reset(currentDutyPercent_);
 }
 
 bool FanController::setMode(FanMode mode)
 {
     std::lock_guard<std::mutex> lock(dutyMutex_);
-    if (mode_ == FanMode::Thermal || mode == FanMode::Thermal) return false;
+    if (!powerEnabled_ || mode_ == FanMode::Thermal || mode == FanMode::Thermal) return false;
     setModeLocked(mode);
     return true;
 }
@@ -120,6 +168,7 @@ bool FanController::setMode(FanMode mode)
 void FanController::toggleMode()
 {
     std::lock_guard<std::mutex> lock(dutyMutex_);
+    if (!powerEnabled_) return;
     if (mode_ == FanMode::Thermal) {
         exitThermalLocked(ThermalExitReason::Manual);
         return; // This button-3 click only exits the override.
@@ -130,13 +179,13 @@ void FanController::toggleMode()
 void FanController::adjustSetting(int direction, bool fine)
 {
     std::lock_guard<std::mutex> lock(dutyMutex_);
-    if (mode_ == FanMode::Thermal) return;
+    if (!powerEnabled_ || mode_ == FanMode::Thermal) return;
     const int sign = (direction > 0) - (direction < 0);
     if (mode_ == FanMode::Duty) {
         const int step = fine ? Config::Buttons::MODIFIED_DUTY_STEP_PERCENT
                               : Config::Buttons::DUTY_STEP_PERCENT;
         manualDutyPercent_ = static_cast<uint8_t>(std::clamp(int(manualDutyPercent_) + sign * step, 0, 100));
-        applyDutyLocked(manualDutyPercent_);
+        if (!powerStarting_) applyDutyLocked(manualDutyPercent_);
     } else {
         const int64_t step = fine ? Config::Buttons::MODIFIED_RPM_STEP : Config::Buttons::RPM_STEP;
         targetRpm_ = static_cast<uint32_t>(std::clamp(int64_t(targetRpm_) + sign * step,
@@ -164,10 +213,10 @@ bool FanController::setThermalEnabled(bool enabled)
         if (mode_ == FanMode::Thermal) exitThermalLocked(ThermalExitReason::Manual);
         return true;
     }
-    if (!temperatureReadyLocked(millis())) return false;
+    if (!powerEnabled_ || !temperatureReadyLocked(millis())) return false;
     if (mode_ != FanMode::Thermal) setModeLocked(FanMode::Thermal);
     thermalExitReason_ = ThermalExitReason::None;
-    applyDutyLocked(static_cast<uint8_t>(thermalCurve_.dutyAt(thermalSample_.temperatureC) + 0.5f));
+    if (!powerStarting_) applyDutyLocked(static_cast<uint8_t>(thermalCurve_.dutyAt(thermalSample_.temperatureC) + 0.5f));
     return true;
 }
 
@@ -183,7 +232,8 @@ bool FanController::setThermalCurve(const ThermalCurve &curve)
     }
     if (mode_ == FanMode::Thermal) {
         if (!temperatureReadyLocked(millis())) exitThermalLocked(ThermalExitReason::Sensor);
-        else applyDutyLocked(static_cast<uint8_t>(curve.dutyAt(thermalSample_.temperatureC) + 0.5f));
+        else if (powerEnabled_ && !powerStarting_)
+            applyDutyLocked(static_cast<uint8_t>(curve.dutyAt(thermalSample_.temperatureC) + 0.5f));
     }
     return true;
 }
@@ -197,7 +247,7 @@ void FanController::updateTemperature(const ClimateSample &sample)
         exitThermalLocked(ThermalExitReason::Sensor);
     } else {
         const auto duty = static_cast<uint8_t>(thermalCurve_.dutyAt(sample.temperatureC) + 0.5f);
-        if (duty != currentDutyPercent_) applyDutyLocked(duty);
+        if (powerEnabled_ && !powerStarting_ && duty != currentDutyPercent_) applyDutyLocked(duty);
     }
 }
 
@@ -206,7 +256,8 @@ FanSnapshot FanController::snapshot() const
     std::lock_guard<std::mutex> lock(dutyMutex_);
     return {mode_, targetRpm_, manualDutyPercent_, currentDutyPercent_.load(), currentRpm_.load(),
             mode_ == FanMode::Thermal ? fixedMode_ : mode_, thermalCurve_,
-            temperatureReadyLocked(millis()), thermalExitReason_, controlRevision_};
+            temperatureReadyLocked(millis()), thermalExitReason_, controlRevision_,
+            powerEnabled_, powerStarting_, waitingForPowerKey_};
 }
 
 void FanController::restoreSettings(const OperatingSettings &settings)
@@ -259,7 +310,7 @@ bool FanController::updateRpm(float &rpmResult)
     {
         std::lock_guard<std::mutex> lock(dutyMutex_);
         currentRpm_ = measuredRpm;
-        if (mode_ == FanMode::Rpm) {
+        if (powerEnabled_ && !powerStarting_ && mode_ == FanMode::Rpm) {
             const float duty = regulator_.update(measuredRpm, targetRpm_, elapsedMs / 1000.0f);
             applyDutyLocked(static_cast<uint8_t>(duty + 0.5f));
         }

@@ -85,7 +85,11 @@ void reportButtonEvents()
 
 void applyButtonActions()
 {
-    const ButtonActions actions = buttonControls.update(buttons);
+    const FanSnapshot state = fan.snapshot();
+    const ButtonActions actions = buttonControls.update(buttons, state.powerEnabled, state.waitingForPowerKey);
+    if (actions.powerHintRequested) oled.requestPowerHint();
+    if (actions.powerOffRequested) fan.setPowerEnabled(false);
+    if (actions.powerOnRequested) fan.setPowerEnabled(true);
     if (actions.direction) fan.adjustSetting(actions.direction, actions.fine);
     if (actions.toggleLed) statusLed.toggleEnabled();
     if (actions.modeSwitchRequested) {
@@ -103,13 +107,18 @@ void updateOled()
     }
 
     const uint32_t now = millis();
+    const FanSnapshot state = fan.snapshot();
+    if (!state.powerEnabled) {
+        oled.showPowerOff(state.waitingForPowerKey);
+        lastOledRefreshMs = now - Config::Oled::REFRESH_INTERVAL_MS;
+        return;
+    }
     if (now - lastOledRefreshMs < Config::Oled::REFRESH_INTERVAL_MS) {
         return;
     }
 
     lastOledRefreshMs = now;
     const ClimateSample sample = climate.snapshot();
-    const FanSnapshot state = fan.snapshot();
     oled.showStatus(
         state.rpm,
         state.appliedDutyPercent,
@@ -150,6 +159,7 @@ void sampleSht30()
 void serviceLocalControls()
 {
     fan.updateTemperature(climate.snapshot());
+    fan.updatePower();
     buttons.update();
     reportButtonEvents();
     applyButtonActions();
@@ -184,6 +194,7 @@ void networkTask(void *)
 
 void setup()
 {
+    fan.initializePowerOutput(); // Relay off before peripheral initialization.
     Serial.begin(Config::SerialConsole::BAUD_RATE);
 #if ARDUINO_USB_CDC_ON_BOOT
     // USB can remain connected while no monitor drains its output. Diagnostics
@@ -213,7 +224,7 @@ void setup()
         }
     }
 
-    Serial.println("Starting fan at 100% duty...");
+    Serial.println("Fan power off; waiting for a key or web power-on.");
     operatingMemory.begin(fan);
     if (!fan.begin()) {
         Serial.println("ERROR: Failed to initialize fan PWM.");

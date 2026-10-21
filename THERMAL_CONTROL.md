@@ -100,7 +100,8 @@ its Duty/RPM presets; the default curve is supplied, then the next changed
 setting is saved as FMO2. Invalid records fall back to Config defaults. Older
 firmware cannot read FMO2. The Wi-Fi credential namespace is independent.
 
-Boot always starts in fixed **Duty**, following the existing startup kick. The
+Boot selects fixed **Duty** with fan supply **off**. The startup kick runs
+only after explicit key/web power-on; see [POWER_CONTROL.md](POWER_CONTROL.md). The
 curve is restored if enabled, but THERMAL activation is never persisted.
 
 ## HTTP API

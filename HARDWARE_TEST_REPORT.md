@@ -442,3 +442,145 @@ was left in fixed RPM 650 with default 25/35, 40/65, 80/90 curve, and THERMAL of
 The failure-exit reason remains `sensor` until the next deliberate activation.
 Serial monitoring was stopped and the port closed. Seven static payloads were
 also checked again after peripheral Flash power recovery.
+
+## Relay-power controls — 2026-10-18
+
+This round tests the GPIO 13 relay-power implementation on the same ESP32-S3-Zero
+using `/dev/cu.usbmodem101` and `http://192.168.30.215/`. The user confirmed that
+the relay module and switched fan-supply wiring were **not connected**. Results
+therefore establish firmware state, actual HTTP service and user-observed
+buttons/OLED/Web Panel behavior. Neither GPIO voltage nor relay contact operation
+was measured, and actual removal of the fan's 12 V supply remains unverified.
+The fan can continue reporting rotation at PWM 0% with this wiring.
+
+### Builds and deployment
+
+Both sketches built with ESP32 Arduino core 3.3.12 and
+`esp32:esp32:esp32s3:CDCOnBoot=cdc`:
+
+| Artifact | Program bytes | Static RAM bytes |
+| --- | ---: | ---: |
+| Main relay-power firmware | 1,038,711 | 51,028 |
+| ResourceUploader | 359,566 | 23,960 |
+
+The uploader and then the main application were flashed with esptool hash
+verification. NVS was retained; no full-chip erase was performed. The main
+`.bin` is 1,038,864 bytes, SHA256
+`7d6e8a34b1d4384a85d34ec4daf366368ebd31d1e56e8bc8534da006366d32bb`.
+The seven-file SPI asset image is 36,579 bytes, CRC32 `45faa6c5`, SHA256
+`8428e7c740d48bc23e8e6af84491c1ff70ada5def977cd26b9c4f54bb752335e`.
+Its upload returned `DONE verified`. All seven resources, plus the `/` alias,
+subsequently matched the current source bytes through the board's HTTP server.
+See [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) for sections, partitions and resource
+offsets. The uploader also commands the relay off during asset programming.
+
+The Python/C++ host suites and all three Node.js suites passed. Power tests
+cover gesture thresholds/cancellation, consumed events, rollover, GPIO/PWM
+initialization, asynchronous startup, retained modes, suspended feedback,
+interrupted boosts, sensor fallback and OLED sleep/hints. The power suite also
+compiled and passed with active-low configuration in an isolated source copy;
+the deployed board firmware uses the default **active-high** configuration.
+Host GPIO fakes establish software calls, not electrical pin levels.
+
+### Physical controls and browser observations
+
+The boot HTTP check reported power disabled, startup inactive, waiting-for-key
+true, Duty mode and applied PWM 0%. The previous manual 55% and target 650 RPM
+presets were retained. The user confirmed the persistent boot prompt
+`Press any key to power on.` before touching any key.
+
+The user then confirmed all of these on the connected board:
+
+- Pressing/releasing button 3 powered on into MANUAL 55%, consuming the key
+  instead of switching to RPM mode.
+- Holding function button 4, operating another key during the hold, then keeping
+  function held past ten seconds did not shut down or restart the countdown.
+  The final manual preset during this exercise was 56%.
+- After releasing all keys, a fresh function-only hold for eight seconds caused
+  OLED sleep and the firmware power-off state.
+- A standalone button-3 operation while off showed the specified wake hint for
+  approximately 1.5 seconds and returned to OLED sleep.
+- Holding buttons 1 + 4 for one second restored MANUAL 56%, without an extra
+  adjustment or mode switch.
+- In the actual Web Panel, power-off slept the OLED, disabled fixed controls and
+  the thermal-enable switch, and kept curve editing available. Web power-on
+  restored THERMAL and the display.
+
+These visual/timing confirmations are user observations, not independently
+instrumented OLED or electrical timing measurements. Serial and HTTP records
+also captured the commanded off/on transitions and 100% startup boost followed
+by restored manual duty.
+
+### Actual HTTP regression
+
+The automated regression passed on the final flashed application:
+
+- Invalid/missing power values returned HTTP 400 and left power/revision intact.
+  Repeating an already-on/off command was idempotent.
+- While off, all eight Duty-phase samples reported PWM 0%. Valid fixed-duty,
+  target-RPM, fixed-mode and thermal-enable commands returned HTTP 409.
+- Power-on reported the nonblocking 100% startup boost, then restored Duty 42%.
+- RPM 850 survived a five-second software-off interval at PWM 0%, then resumed
+  RPM mode near the previous applied duty. This checks resume behavior, not
+  independent RPM calibration or convergence under relay-switched power.
+- THERMAL remained selected during a four-second off interval with PWM 0%; curve
+  editing was accepted without enabling power. On restoration, duty agreed with
+  the curve and measured temperature.
+- Three concurrent clients completed all 15 status requests; the slowest took
+  **0.4232 seconds** with the serial/HTTP monitor also active. This bounded check
+  is not a general latency guarantee.
+
+Raw local evidence is in ignored `build/power-acceptance/`: build/flash logs,
+`build-manifest.json`, resource upload log, `boot-results.json`,
+`physical-control-observations.json`, `run-results.json`, `run-events.json`,
+and runtime serial/HTTP records. User visual confirmations are recorded here
+separately from automated assertions.
+
+### Runtime observation and final state
+
+The combined serial/HTTP observation ran for **459.574 seconds**, collecting
+**400 successful status samples**. Four initial 12-second requests timed out
+before station connectivity returned; there were no subsequent HTTP errors in
+that monitor. Its slowest successful request took 5.195 seconds. This includes
+startup and the complete interactive/automated exercise, unlike the smaller
+concurrency batch above. Serial recorded one initial startup and no additional
+startup, panic, backtrace or watchdog. The maximum reported local-loop gap was
+**31 ms**. The pre-existing startup `esp_cache_msync: invalid addr or null pointer`
+warning remains present; it was not diagnosed in this round.
+
+After testing, the original **650 RPM target, manual 55% preset and default
+25°C/35%, 40°C/65%, 80°C/90% curve** were restored. The board was left in retained
+RPM mode with the **power command off**, startup inactive, PWM 0% and OLED asleep.
+The final 55 status samples over 54.895 seconds all retained that commanded-off
+state. Climate readings remained available. TACH still reported about 570 RPM
+because the supply relay is absent; this does not contradict the PWM/power
+command. The restored presets were given time for the existing mode-exit NVS
+save path; this round did not add a separate cold-power-cycle persistence test.
+
+Source and image hashes were rechecked against the deployed build manifest
+after those tests. Serial monitoring was stopped and its port closed.
+Remaining hardware acceptance is the correctly wired relay module, measured
+active/inactive GPIO behavior (including reset), and actual 12 V off/on with
+the fan attached. See [POWER_CONTROL.md](POWER_CONTROL.md) for the reset-bias and
+commanded-state contract.
+
+### Wake-prompt wording correction
+
+After this acceptance run, the user identified an English word-order error in
+the manual-off wake hint. The corrected prompt is
+`Hold ^ and * for 1 second to power on the fan.`, rendered as three lines:
+`Hold ^ and * for` / `1 second to power on` / `the fan.`. The initial boot prompt
+remains `Press any key to power on.`. The existing power/OLED host test passed
+with the corrected expected text and the same 1.5-second hint expiry. The earlier
+user observations above apply to the preceding wording; the revised text has
+not been visually reaccepted by the user.
+
+The corrected main application was rebuilt and flashed with esptool hash
+verification. Program usage, static RAM, image size and the section sizes in
+[MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) are unchanged. Its SHA256 is
+`c5606d9c826c920544d28c0858046e1d5c9352b22d2ce44276fb95f0b0dab62d`;
+logs are `build/power-acceptance/prompt-build.log` and `prompt-flash.log`.
+The previous build hash above identifies the image used for the full acceptance
+run. SPI resources were unchanged and were not uploaded again. This upload
+reboots into the normal initial power-off/any-key state; the prior selected
+RPM mode is not persisted across resets.

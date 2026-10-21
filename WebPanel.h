@@ -24,6 +24,7 @@ private:
     void handleSetDuty();
     void handleSetRpm();
     void handleSetMode();
+    void handlePower();
     void handleThermalMode();
     void handleThermalCurve();
     void sendStatus();

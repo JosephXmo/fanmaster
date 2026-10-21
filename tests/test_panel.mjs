@@ -9,6 +9,7 @@ let nextPoll;
 let state = {
   rpm: 810, duty_percent: 39, manual_duty_percent: 35, wifi_connected: true,
   mode: 'rpm', target_rpm: 850, min_rpm: 550, max_rpm: 1700, poll_interval_ms: 1000,
+  power_enabled: true,
 };
 let failPost = false, releasePost;
 let delayPost = false;
@@ -16,7 +17,7 @@ function field(id) {
   if (!fields.has(id)) {
     fields.set(id, {
       _value: '', get value() { return this._value; }, set value(v) { this._value = String(v); },
-      style: {}, classList: { toggle() {} },
+      style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, classList: { toggle() {} },
       addEventListener(type, handler) { this[type] = handler; }, focus() {},
     });
   }
@@ -30,7 +31,9 @@ vm.runInNewContext(source, {
     if (options.method === 'POST') {
       if (delayPost) await new Promise(resolve => { releasePost = resolve; });
       if (failPost) return { ok: false, status: 400, json: async () => ({ error: 'Rejected target' }) };
-      if (url === '/api/fan/rpm') {
+      if (url === '/api/fan/power') {
+        state = { ...state, power_enabled: options.body.get('enabled') === '1' };
+      } else if (url === '/api/fan/rpm') {
         state = { ...state, mode: 'rpm', target_rpm: Number(options.body.get('rpm')) };
       } else {
         state = { ...state, mode: 'duty', manual_duty_percent: Number(options.body.get('duty')),
@@ -94,4 +97,28 @@ releasePost();
 await pending;
 assert.equal(field('applyButton').disabled, false);
 assert.match(field('controlMode').textContent, /1000 RPM/);
+delayPost = false;
+await field('powerToggle').click();
+assert.equal(requests.at(-1).url, '/api/fan/power');
+assert.equal(state.power_enabled, false);
+assert.equal(field('applyButton').disabled, true);
+assert.equal(field('applyRpmButton').disabled, true);
+assert.match(field('controlMode').textContent, /POWER OFF.*1000 RPM/);
+const offCount = requests.length;
+await submit('rpmForm'); await submit('dutyForm');
+assert.equal(requests.length, offCount);
+await field('powerToggle').click();
+assert.equal(state.power_enabled, true);
+assert.equal(field('applyRpmButton').disabled, false);
+state.power_enabled = false; state.power_waiting_for_key = true;
+await poll();
+assert.match(field('powerState').textContent, /any local key/);
+state.power_enabled = true; state.power_starting = true;
+await poll();
+assert.match(field('powerState').textContent, /Startup boost/);
+failPost = true;
+await field('powerToggle').click();
+assert.equal(state.power_enabled, true);
+assert.match(field('powerMessage').textContent, /Rejected target/);
+assert.equal(field('powerToggle').disabled, false);
 console.log('Panel RPM limits, manual setting, edits, mode changes and request-state tests passed');

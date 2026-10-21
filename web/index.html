@@ -56,6 +56,12 @@
         <h2 id="controlTitle">Choose a setting</h2>
         <p class="control-copy">Apply manual duty or a fixed RPM target. Each submission selects its control mode.</p>
 
+        <div class="power-control">
+          <button id="powerToggle" type="button" aria-pressed="false" disabled>Reading fan power…</button>
+          <p id="powerState" class="control-copy" role="status">Waiting for controller status.</p>
+          <p id="powerMessage" class="form-message" role="status" aria-live="polite"></p>
+        </div>
+
         <form id="dutyForm" novalidate>
           <label for="duty">Duty cycle</label>
           <div class="input-wrap">

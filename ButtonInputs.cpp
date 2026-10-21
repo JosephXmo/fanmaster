@@ -75,6 +75,11 @@ bool ButtonInputs::wasPressed(ButtonId button) const
     return isValid(button) && states_[indexOf(button)].pressedEvent;
 }
 
+bool ButtonInputs::isRawPressed(ButtonId button) const
+{
+    return isValid(button) && states_[indexOf(button)].rawPressed;
+}
+
 bool ButtonInputs::wasReleased(ButtonId button) const
 {
     return isValid(button) && states_[indexOf(button)].releasedEvent;

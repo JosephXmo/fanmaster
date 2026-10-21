@@ -1,3 +1,4 @@
+#include "StartFan.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -51,7 +52,7 @@ void controlTests()
 {
     fakeMillis = std::numeric_limits<uint32_t>::max() - 2000;
     FanController fan;
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     assert(fan.snapshot().mode == FanMode::Duty && fan.dutyPercent() == 35);
     fan.setDutyPercent(40);
     fan.toggleMode();
@@ -92,7 +93,7 @@ void memoryTests()
     FanController fan;
     OperatingMemory memory;
     memory.begin(fan);
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     memory.update(fan);
     assert(Preferences::writeCount == 0); // No boot-time default write.
     fan.setDutyPercent(47);
@@ -105,7 +106,7 @@ void memoryTests()
         FanController boot;
         OperatingMemory reboot;
         reboot.begin(boot);
-        assert(boot.begin());
+        assert(boot.begin()); startFan(boot);
         assert(boot.snapshot().mode == FanMode::Duty && boot.dutyPercent() == 47);
         assert(boot.snapshot().targetRpm == 850);
     }
@@ -123,7 +124,7 @@ void memoryTests()
         FanController boot;
         OperatingMemory reboot;
         reboot.begin(boot);
-        assert(boot.begin());
+        assert(boot.begin()); startFan(boot);
         assert(boot.dutyPercent() == 47 && boot.snapshot().targetRpm == 970);
         boot.toggleMode();
         for (int i = 0; i < 20; ++i) sample(boot, 20);
@@ -139,7 +140,7 @@ void memoryTests()
         FanController disabled;
         OperatingMemory off(false);
         off.begin(disabled);
-        assert(disabled.begin());
+        assert(disabled.begin()); startFan(disabled);
         assert(disabled.dutyPercent() == 35 && disabled.snapshot().targetRpm == 850);
         disabled.setDutyPercent(60);
         disabled.toggleMode();
@@ -163,13 +164,14 @@ void memoryTests()
     FanController corrupt;
     OperatingMemory corruptMemory;
     corruptMemory.begin(corrupt);
-    assert(corrupt.begin());
+    assert(corrupt.begin()); startFan(corrupt);
     assert(corrupt.dutyPercent() == 35 && corrupt.snapshot().targetRpm == 850);
     Preferences::opens = false;
     OperatingMemory unavailable;
     FanController defaults;
     unavailable.begin(defaults);
-    assert(defaults.begin() && defaults.dutyPercent() == 35);
+    assert(defaults.begin()); startFan(defaults);
+    assert(defaults.dutyPercent() == 35);
     Preferences::opens = true;
 }
 
@@ -177,7 +179,7 @@ void sampledPlantTest()
 {
     fakeMillis = 0;
     FanController fan;
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     float physical = 820;
     for (uint32_t target : {850, 1400, 650}) {
         assert(fan.setTargetRpm(target));
@@ -198,6 +200,7 @@ void serialTests()
 {
     FanController fan;
     SerialConsole console;
+    assert(fan.begin()); startFan(fan);
     const std::string commands = "rpm 950\nmode duty\n41\nmode rpm\nrpm -1\nrpm 9999999999999999\n";
     Serial.incoming.assign(commands.begin(), commands.end());
     Serial.position = 0;
@@ -211,7 +214,7 @@ void tachNoiseTests()
 {
     fakeMillis = 0;
     FanController fan;
-    assert(fan.begin());
+    assert(fan.begin()); startFan(fan);
     assert(fan.setTargetRpm(850));
     sample(fan, 28); // Valid 840 RPM establishes the feedback state.
     const auto previous = fan.snapshot();

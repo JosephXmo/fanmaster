@@ -1,3 +1,4 @@
+#include "StartFan.h"
 #include <cassert>
 #include <fstream>
 #include <iterator>
@@ -21,11 +22,26 @@ int main(int argc, char **argv)
     WifiStation wifi;
     wifi.begin();
     FanController fan;
-    fan.setDutyPercent(35);
+    assert(fan.begin());
     WebPanel panel;
     ClimateReading climate;
     panel.begin(fan, wifi, localControls, climate);
     auto &server = *WebServer::instance;
+    server.request("/api/status", HTTP_GET);
+    assert(server.status == 200 && server.socket.body.find("\"power_enabled\":false") != std::string::npos);
+    assert(server.socket.body.find("\"power_waiting_for_key\":true") != std::string::npos);
+    for (const char *invalid : {"", "2", "-1", "true", "0.5", "4294967297"}) {
+        server.request("/api/fan/power", HTTP_POST, {{"enabled", invalid}});
+        assert(server.status == 400 && !fan.snapshot().powerEnabled);
+    }
+    server.request("/api/fan/power", HTTP_POST);
+    assert(server.status == 400);
+    const auto beforePower = millis();
+    server.request("/api/fan/power", HTTP_POST, {{"enabled", "1"}});
+    assert(server.status == 200 && millis() == beforePower && fan.snapshot().powerStarting);
+    assert(server.socket.body.find("\"power_enabled\":true") != std::string::npos);
+    assert(server.socket.body.find("\"power_starting\":true") != std::string::npos);
+    fakeMillis += Config::Fan::STARTUP_TIME_MS; fan.updatePower();
     server.request("/", HTTP_GET);
     assert(server.status == 200 && server.socket.body.find("Connect Fanmaster") != std::string::npos);
     assert(server.contentLength == server.socket.body.size());
@@ -105,6 +121,22 @@ int main(int argc, char **argv)
     server.request("/api/status", HTTP_GET);
     assert(server.socket.body.find("\"mode\":\"duty\"") != std::string::npos);
     assert(server.socket.body.find("\"thermal_exit_reason\":\"manual\"") != std::string::npos);
+    server.request("/api/fan/power", HTTP_POST, {{"enabled", "0"}});
+    assert(server.status == 200 && !fan.snapshot().powerEnabled && fan.dutyPercent() == 0);
+    const auto offRevision = fan.snapshot().controlRevision;
+    server.request("/api/fan/power", HTTP_POST, {{"enabled", "0"}});
+    assert(server.status == 200 && fan.snapshot().controlRevision == offRevision);
+    server.request("/api/fan/duty", HTTP_POST, {{"duty", "20"}}); assert(server.status == 409);
+    server.request("/api/fan/rpm", HTTP_POST, {{"rpm", "900"}}); assert(server.status == 409);
+    server.request("/api/fan/mode", HTTP_POST, {{"mode", "rpm"}}); assert(server.status == 409);
+    server.request("/api/thermal/mode", HTTP_POST, {{"enabled", "1"}}); assert(server.status == 409);
+    server.request("/api/thermal/curve", HTTP_POST, curve);
+    assert(server.status == 200 && fan.dutyPercent() == 0); // Editable without enabling relay.
+    fan.setPowerEnabled(true); // Local restore is visible to the same status endpoint.
+    fakeMillis += Config::Fan::STARTUP_TIME_MS; fan.updatePower();
+    server.request("/api/status", HTTP_GET);
+    assert(server.status == 200 && server.socket.body.find("\"power_enabled\":true") != std::string::npos);
+    assert(fan.dutyPercent() == 100 && server.socket.body.back() == '}');
     server.request("/api/wifi/configure", HTTP_POST, {{"ssid", "home"}, {"password", "password"}}, false);
     assert(server.status == 403 && !wifi.isProvisioning());
     server.request("/api/wifi/configure", HTTP_POST, {{"ssid", "home"}, {"password", "short"}});

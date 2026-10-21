@@ -30,6 +30,8 @@ int main(int argc, char **argv)
     assert(Serial.output.empty());
     fakeOledFrames.clear();
     setup();
+    assert(fakePinModes[Config::Pins::FAN_POWER] == OUTPUT);
+    assert(fakePinLevels[Config::Pins::FAN_POWER] == (Config::Power::RELAY_ACTIVE_HIGH ? LOW : HIGH));
     assert(flashReady);
     assert(fakeOledFrames.back().find("Waiting for host") != std::string::npos);
     auto transfer = [&](size_t bytes, uint32_t crc) {

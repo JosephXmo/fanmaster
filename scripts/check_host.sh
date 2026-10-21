@@ -11,6 +11,9 @@ python3 scripts/assets.py pack --output "$check_dir/assets.bin"
   tests/test_buttons.cpp ButtonInputs.cpp -o "$check_dir/button-tests"
 "$check_dir/button-tests"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \
+  tests/test_power.cpp FanController.cpp OledDisplay.cpp -o "$check_dir/power-tests"
+"$check_dir/power-tests"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \
   tests/test_rpm.cpp FanController.cpp OperatingMemory.cpp SerialConsole.cpp -o "$check_dir/rpm-tests"
 "$check_dir/rpm-tests"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I tests/fakes -I . \

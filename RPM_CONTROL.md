@@ -76,8 +76,8 @@ add a separate stall-recovery routine.
 
 Manual duty and target RPM are independent settings. Leaving Duty queues its
 manual setpoint for persistence; leaving RPM queues the target RPM. PI output
-does not change the remembered manual setting. A restart always enters Duty,
-after the existing full-duty startup kick. Switching to RPM uses the saved
+does not change the remembered manual setting. A restart selects Duty but leaves the relay off. The full-duty startup kick
+runs only after explicit key/web power-on; see [POWER_CONTROL.md](POWER_CONTROL.md). Switching to RPM uses the saved
 target, initially 850 RPM. The last active mode is not persisted.
 
 `OperatingMemory` uses a separate `fanmaster-op` NVS namespace with a versioned

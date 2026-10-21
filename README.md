@@ -41,6 +41,8 @@ than a single sketch file. Hardware pins and user-adjustable constants live in
   preceding fixed state via its toggle, button 3 or sensor-failure fallback.
 - Save thermal curves under the same operating-memory switch; boot stays in Duty.
 - Expose status and fan-control HTTP API entrypoints.
+- Switch the fan supply through a GPIO 13 relay, with boot-off/key wake, an
+  eight-second function-key shutdown, OLED sleep/hints and Web Panel power control.
 
 SHT30 is sampled once per second. OLED and HTTP share the latest cached sample;
 failed reads display placeholders and produce null API values.
@@ -51,6 +53,7 @@ failed reads display placeholders and produce null API values.
 | --- | --- |
 | Fan TACH | GPIO 1, active falling edge |
 | Fan PWM | GPIO 2, 25 kHz, 8-bit |
+| Fan supply relay input | GPIO 13, active high (configurable) |
 | Onboard WS2812 RGB status LED | GPIO 21 |
 | I2C SDA | GPIO 3 |
 | I2C SCL | GPIO 4 |
@@ -171,6 +174,7 @@ inactive. During setup, `/` displays the provisioning page. The dashboard contai
 - A submit button that applies the requested fan duty cycle.
 - An RPM target input bounded by Config limits and a button to activate RPM control.
 - Active control mode and target RPM, alongside the actual PWM output.
+- A fan power button with authoritative relay/starting state and local-key guidance.
 - Current duty-cycle feedback and clear validation or network error messages.
 - Live temperature and humidity readouts; failed samples show `--`.
 
@@ -225,9 +229,17 @@ See [RPM_CONTROL.md](RPM_CONTROL.md) for tuning, persistence and validation.
 [THERMAL_CONTROL.md](THERMAL_CONTROL.md) describes the independent temperature
 widget, curve validation/interpolation, local override, sensor-failure policy,
 NVS migration and thermal APIs. Fixed changes return HTTP 409 while THERMAL is
-active. Successful fan/thermal commands return the complete status snapshot.
+active or fan power is off. Successful fan/thermal commands return the complete status snapshot.
 The updated Web Panel requires repacking/re-uploading external flash assets as
-well as flashing the main firmware; the resource-uploader firmware is unchanged.
+well as flashing the main firmware. The uploader now keeps the relay off; its
+transfer protocol remains unchanged.
+
+`POST /api/fan/power` accepts `enabled=0` or `enabled=1`. Status adds
+`power_enabled`, `power_starting` and `power_waiting_for_key`. Every boot defaults
+to relay off with “Press any key to power on.” on OLED. Later local shutdown uses
+button 4 alone for eight seconds; wake uses buttons 1 + 4 for one second.
+See [POWER_CONTROL.md](POWER_CONTROL.md) for cancellation, OLED hints, mode
+retention and the distinction between commanded power and physical relay feedback.
 
 Unknown API paths return JSON errors. The Web Panel is intended for a trusted
 local network and does not initially include authentication or TLS.
@@ -328,7 +340,7 @@ resource readback and HTTP concurrency. See the fixed-RPM section of
 [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measured response and limits;
 this does not establish the full speed range or recovery under external load.
 
-The final three-point THERMAL revision builds at **1,036,335 program bytes /
+The preceding three-point THERMAL revision builds at **1,036,335 program bytes /
 51,004 static RAM bytes**. Its **34,340-byte, seven-resource** image and main
 application have been flashed on the connected ESP32-S3. Actual HTTP curve,
 validation and concurrency checks, user-observed OLED/buttons, temperature-driven
@@ -339,3 +351,13 @@ interruption are now rejected before feedback. See
 [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for measured acceptance and
 limits, and [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) for the exact internal Flash
 partition map, firmware section sizes and external SPI resource layout.
+
+The relay-power revision builds at **1,038,711 program bytes / 51,028 static RAM
+bytes**. The main image and **36,579-byte, seven-resource** SPI image have been
+uploaded and verified on the connected board. Host tests include both relay
+polarities; actual HTTP tests cover power commands and retained Duty/RPM/THERMAL
+state. The user confirmed boot wake, cancelled shutdown holds, eight-second
+shutdown, OLED hints and the one-second wake chord. The relay module is not yet
+connected, so physical contact operation and removal of 12 V remain unverified.
+See [POWER_CONTROL.md](POWER_CONTROL.md) and the relay-power section of
+[HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md).

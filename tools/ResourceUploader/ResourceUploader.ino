@@ -5,9 +5,10 @@
 #include "AssetFormat.h"
 #include "W25q64.h"
 #include "UploadDisplay.h"
+#include "FanPowerOutput.h"
 
 // Build with scripts/build_firmware.py: shared files and Config.h are staged
-// alongside this sketch. This program never accesses ESP32 NVS or fan outputs.
+// alongside this sketch. This program keeps the relay off and never accesses NVS.
 W25q64 flash;
 UploadDisplay uploadDisplay;
 bool flashReady = false;
@@ -73,6 +74,7 @@ bool uploadImage(uint32_t size, uint32_t expectedCrc)
 
 void setup()
 {
+    FanPowerOutput::begin();
     Serial.begin(115200);
     Serial.setTimeout(5000);
     uploadDisplay.begin();

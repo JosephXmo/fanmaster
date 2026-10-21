@@ -28,11 +28,17 @@ struct FanSnapshot {
     bool thermalSensorReady;
     ThermalExitReason thermalExitReason;
     uint32_t controlRevision;
+    bool powerEnabled;
+    bool powerStarting;
+    bool waitingForPowerKey;
 };
 
 class FanController {
 public:
     bool begin();
+    void initializePowerOutput();
+    void setPowerEnabled(bool enabled);
+    void updatePower();
     bool setDutyPercent(uint8_t dutyPercent);
     bool setTargetRpm(uint32_t rpm);
     bool setMode(FanMode mode);
@@ -78,4 +84,9 @@ private:
     ClimateSample thermalSample_;
     ThermalExitReason thermalExitReason_ = ThermalExitReason::None;
     uint32_t controlRevision_ = 0;
+    bool powerEnabled_ = false;
+    bool powerStarting_ = false;
+    bool waitingForPowerKey_ = true;
+    uint32_t powerStartedAtMs_ = 0;
+    uint8_t resumeDutyPercent_ = Config::Fan::DEFAULT_DUTY_PERCENT;
 };
