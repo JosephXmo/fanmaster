@@ -48,8 +48,8 @@ constexpr uint32_t STARTUP_TIME_MS = 1000;
 namespace Power {
 // GPIO drives the input of a relay module, never a bare relay coil.
 constexpr bool RELAY_ACTIVE_HIGH = true;
-constexpr uint32_t SHUTDOWN_HOLD_MS = 8000;
-constexpr uint32_t WAKE_HOLD_MS = 1000;
+constexpr uint32_t SHUTDOWN_HOLD_MS = 3000;
+constexpr uint32_t WAKE_HOLD_MS = 500;
 constexpr uint32_t HINT_MS = 1500;
 }  // namespace Power
 
