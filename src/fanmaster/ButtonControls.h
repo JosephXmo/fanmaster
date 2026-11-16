@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ButtonInputs.h"
+#include "UpdaterClicks.h"
 
 static_assert(Config::Power::SHUTDOWN_HOLD_MS > 0 && Config::Power::SHUTDOWN_HOLD_MS < 0x80000000UL &&
               Config::Power::WAKE_HOLD_MS > 0 && Config::Power::WAKE_HOLD_MS < 0x80000000UL &&
@@ -15,6 +16,7 @@ struct ButtonActions {
     bool powerOffRequested = false;
     bool powerOnRequested = false;
     bool powerHintRequested = false;
+    bool selectUpdaterRequested = false;
 };
 
 // Interpret debounced input separately from hardware outputs. Button 3 clicks
@@ -24,6 +26,7 @@ public:
     ButtonActions update(const ButtonInputs &buttons, bool powered = true,
                          bool waitingForPowerKey = false) {
         ButtonActions actions;
+        actions.selectUpdaterRequested = updaterClicks_.update(buttons);
         const uint32_t now = millis();
         if (powered != lastPowered_) {
             lastPowered_ = powered;
@@ -99,6 +102,7 @@ public:
         return actions;
     }
 private:
+    UpdaterClicks updaterClicks_;
     bool button3Chord_ = false;
     bool lastPowered_ = true;
     bool waitForRelease_ = false;

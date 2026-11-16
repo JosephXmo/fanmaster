@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "Config.h"
+#include "BootSlots.h"
 #include "FanController.h"
 #include "WifiStation.h"
 
@@ -30,6 +31,8 @@ void WebPanel::begin(FanController &fan, WifiStation &wifiStation,
     server_.on("/api/fan/rpm", HTTP_POST, [this]() { handleSetRpm(); });
     server_.on("/api/fan/mode", HTTP_POST, [this]() { handleSetMode(); });
     server_.on("/api/fan/power", HTTP_POST, [this]() { handlePower(); });
+    server_.on("/api/updater/select", HTTP_POST, [this]() { handleSelectUpdater(); });
+    server_.on("/api/updater/cancel", HTTP_POST, [this]() { handleCancelUpdater(); });
     server_.on("/api/thermal/mode", HTTP_POST, [this]() { handleThermalMode(); });
     server_.on("/api/thermal/curve", HTTP_POST, [this]() { handleThermalCurve(); });
     server_.on("/setup", HTTP_GET, [this]() { handleSetup(); });
@@ -219,11 +222,12 @@ void WebPanel::sendStatus()
         snprintf(temperature, sizeof(temperature), "%.1f", sample.temperatureC);
         snprintf(humidity, sizeof(humidity), "%.1f", sample.humidityPercent);
     }
-    char response[896];
+    char response[1024];
     snprintf(
         response,
         sizeof(response),
-        "{\"rpm\":%lu,\"duty_percent\":%u,\"wifi_connected\":%s,"
+        "{\"firmware_version\":\"%s\",\"updater_available\":%s,\"updater_next_boot\":%s,"
+        "\"rpm\":%lu,\"duty_percent\":%u,\"wifi_connected\":%s,"
         "\"power_enabled\":%s,\"power_starting\":%s,\"power_waiting_for_key\":%s,"
         "\"temperature_c\":%s,\"humidity_percent\":%s,\"poll_interval_ms\":%lu,"
         "\"mode\":\"%s\",\"target_rpm\":%lu,\"manual_duty_percent\":%u,"
@@ -231,6 +235,9 @@ void WebPanel::sendStatus()
         "\"fixed_mode\":\"%s\",\"thermal_sensor_ready\":%s,\"thermal_exit_reason\":\"%s\","
         "\"thermal_points\":[{\"temperature_c\":%.1f,\"duty_percent\":%u},"
         "{\"temperature_c\":%.1f,\"duty_percent\":%u},{\"temperature_c\":%.1f,\"duty_percent\":%u}]}",
+        Config::VERSION,
+        BootSlots::updaterAvailable() ? "true" : "false",
+        BootSlots::updaterSelected() ? "true" : "false",
         static_cast<unsigned long>(roundedRpm),
         state.appliedDutyPercent,
         wifiStation_->isConnected() ? "true" : "false",
@@ -334,6 +341,30 @@ void WebPanel::handlePower()
     }
     fan_->setPowerEnabled(enabled != 0);
     sendStatus();
+}
+
+void WebPanel::handleSelectUpdater()
+{
+    recordRequest("POST /api/updater/select", true);
+    const esp_err_t result = BootSlots::selectUpdater();
+    if (result != ESP_OK) {
+        sendJson(result == ESP_ERR_NOT_FOUND ? 503 : 500,
+                 "{\"error\":\"Cannot select updater; install a valid ResourceUploader image in app1\"}");
+        return;
+    }
+    sendStatus(); // Selection only: the current application keeps running.
+}
+
+void WebPanel::handleCancelUpdater()
+{
+    recordRequest("POST /api/updater/cancel", true);
+    const esp_err_t result = BootSlots::selectMain();
+    if (result != ESP_OK) {
+        sendJson(result == ESP_ERR_NOT_FOUND ? 503 : 500,
+                 "{\"error\":\"Cannot cancel updater boot; cannot select a valid Fanmaster image in app0\"}");
+        return;
+    }
+    sendStatus(); // Restore next boot to app0 without restarting or changing fan settings.
 }
 
 bool WebPanel::parseTemperature(const char *name, uint16_t &result) const

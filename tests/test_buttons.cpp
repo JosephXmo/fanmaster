@@ -29,7 +29,7 @@ void powerGestures()
     for (uint32_t start : {0U, std::numeric_limits<uint32_t>::max() - 4000}) {
         Controls c(start);
         c.set(ButtonId::Button4, true);
-        assert(!c.tick(7999).powerOffRequested);
+        assert(!c.tick(Config::Power::SHUTDOWN_HOLD_MS - 1).powerOffRequested);
         assert(c.tick(1).powerOffRequested);
         assert(!c.tick(9000).powerOffRequested); // Exactly once per hold.
         c.powered = false; c.tick();
@@ -39,7 +39,7 @@ void powerGestures()
         assert(!c.set(ButtonId::Button3, false).modeSwitchRequested);
         c.set(ButtonId::Button1, true);
         c.set(ButtonId::Button4, true);
-        assert(!c.tick(999).powerOnRequested);
+        assert(!c.tick(Config::Power::WAKE_HOLD_MS - 1).powerOnRequested);
         auto wake = c.tick(1);
         assert(wake.powerOnRequested && wake.direction == 0 && !wake.powerOffRequested);
         c.powered = true; c.tick();
@@ -47,7 +47,7 @@ void powerGestures()
         assert(!c.set(ButtonId::Button4, false).modeSwitchRequested);
         assert(c.set(ButtonId::Button1, false).direction == 0);
         c.set(ButtonId::Button4, true);
-        assert(c.tick(8000).powerOffRequested);
+        assert(c.tick(Config::Power::SHUTDOWN_HOLD_MS).powerOffRequested);
     }
     for (auto other : {ButtonId::Button1, ButtonId::Button2, ButtonId::Button3}) {
         Controls c;
@@ -55,7 +55,7 @@ void powerGestures()
         c.set(other, true); c.set(other, false);
         assert(!c.tick(20000).powerOffRequested); // No restart during this function hold.
         c.set(ButtonId::Button4, false); c.set(ButtonId::Button4, true);
-        assert(c.tick(8000).powerOffRequested);
+        assert(c.tick(Config::Power::SHUTDOWN_HOLD_MS).powerOffRequested);
         Controls preheld;
         preheld.set(other, true); preheld.set(ButtonId::Button4, true);
         preheld.set(other, false);
@@ -63,7 +63,7 @@ void powerGestures()
     }
     {
         Controls c;
-        c.set(ButtonId::Button4, true); c.tick(7999);
+        c.set(ButtonId::Button4, true); c.tick(Config::Power::SHUTDOWN_HOLD_MS - 1);
         fakePinLevels[Config::Pins::BUTTON_4] = HIGH;
         assert(!c.tick(1).powerOffRequested); // Raw release takes precedence at threshold.
         fakePinLevels[Config::Pins::BUTTON_4] = LOW;
@@ -73,7 +73,7 @@ void powerGestures()
         Controls c;
         c.set(ButtonId::Button4, true);
         fakePinLevels[Config::Pins::BUTTON_2] = LOW;
-        c.tick(8000); // Raw other-key press aborts even before debounce.
+        c.tick(Config::Power::SHUTDOWN_HOLD_MS); // Raw other-key press aborts even before debounce.
         fakePinLevels[Config::Pins::BUTTON_2] = HIGH;
         assert(!c.tick(10000).powerOffRequested);
     }
@@ -91,11 +91,11 @@ void powerGestures()
         c.powered = false; c.tick();
         c.set(functionFirst ? ButtonId::Button4 : ButtonId::Button1, true);
         c.set(functionFirst ? ButtonId::Button1 : ButtonId::Button4, true);
-        c.tick(900);
+        c.tick(Config::Power::WAKE_HOLD_MS - 100);
         c.set(ButtonId::Button2, true);
         assert(!c.tick(1000).powerOnRequested);
         c.set(ButtonId::Button2, false);
-        assert(!c.tick(999).powerOnRequested);
+        assert(!c.tick(Config::Power::WAKE_HOLD_MS - 1).powerOnRequested);
         assert(c.tick(1).powerOnRequested);
     }
     {
@@ -107,9 +107,43 @@ void powerGestures()
     }
 }
 
+void updaterClicks()
+{
+    for (uint32_t start : {0U, UINT32_MAX - 1000}) {
+        for (bool powered : {false, true}) {
+            Controls c(start); c.powered = powered; c.tick();
+            for (unsigned i = 1; i <= Config::Updater::CLICK_COUNT; ++i) {
+                assert(!c.set(ButtonId::Button4, true).selectUpdaterRequested);
+                const auto action = c.set(ButtonId::Button4, false);
+                assert(action.selectUpdaterRequested == (i == Config::Updater::CLICK_COUNT));
+                assert(!action.powerOffRequested && !action.powerOnRequested);
+            }
+            assert(!c.tick().selectUpdaterRequested);
+        }
+    }
+    for (int interruption = 0; interruption < 3; ++interruption) {
+        Controls c;
+        auto click = [&]() {
+            c.set(ButtonId::Button4, true);
+            return c.set(ButtonId::Button4, false).selectUpdaterRequested;
+        };
+        for (int i = 0; i < 19; ++i) assert(!click());
+        if (interruption == 0) c.tick(Config::Updater::CLICK_INTERVAL_MS + 1);
+        if (interruption == 1) { c.set(ButtonId::Button2, true); c.set(ButtonId::Button2, false); }
+        if (interruption == 2) {
+            c.set(ButtonId::Button4, true); c.tick(Config::Updater::CLICK_MAX_HOLD_MS);
+            assert(!c.set(ButtonId::Button4, false).selectUpdaterRequested);
+        }
+        assert(!click()); // Old clicks cannot survive timeout/chord/long hold.
+        for (int i = 0; i < 18; ++i) assert(!click());
+        assert(click());
+    }
+}
+
 int main()
 {
     powerGestures();
+    updaterClicks();
     {
         Controls c;
         // Bounce shorter than debounce does not step.

@@ -119,7 +119,7 @@ def upload(image, port, baud):
                 break
             except TimeoutError:
                 if time.monotonic() >= deadline:
-                    raise TimeoutError('ResourceUploader did not respond; flash the uploader first')
+                    raise TimeoutError('ResourceUploader did not respond; select app1 and restart the board first')
         connection.write(f'UPLOAD {len(image)} {crc(image):08x}\n'.encode('ascii'))
         wait_for('READY', 600)
         for offset in range(0, len(image), 256):
@@ -127,6 +127,21 @@ def upload(image, port, baud):
             connection.write(chunk)
             wait_for(f'ACK {offset + len(chunk)}', 10)
         print(wait_for('DONE verified', 15))
+        # Closing/reopening native USB can reset ESP32-S3 USB/JTAG boards.
+        # Keep this handle open through the updater's ten-second countdown.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                line = connection.readline().decode('ascii', errors='replace').strip()
+            except serial.SerialException as exc:
+                raise RuntimeError('Assets verified; USB disconnected before app0 return could be observed. Check the board.') from exc
+            if line.startswith('ERROR'):
+                raise RuntimeError(f'Assets verified, but return failed: {line}')
+            if line.startswith('Fanmaster version '):
+                print('RETURN app0 observed')
+                break
+        else:
+            raise TimeoutError('Assets verified, but app0 return was not observed within 15 seconds; check/reset the board')
 
 
 def main():

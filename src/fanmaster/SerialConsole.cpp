@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "FanController.h"
+#include "BootSlots.h"
 
 void SerialConsole::update(FanController &fan)
 {
@@ -40,6 +41,13 @@ void SerialConsole::processCommand(FanController &fan)
     char *input = trim(inputBuffer_);
 
     if (*input == '\0') {
+        return;
+    }
+
+    if (strcmp(input, "boot updater") == 0) {
+        const esp_err_t result = BootSlots::selectUpdater();
+        Serial.println(result == ESP_OK ? "Next boot: app1 ResourceUploader. Restart manually."
+                                       : "ERROR: updater selection failed; install a valid app1 updater.");
         return;
     }
 

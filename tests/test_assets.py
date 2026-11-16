@@ -36,8 +36,9 @@ class AssetTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 assets.pack(root)
             (root / ('x' * 96)).unlink()
-            (root / 'outside').symlink_to(ROOT / 'Config.h')
-            with self.assertRaises(ValueError):
+            (root / 'outside').symlink_to(ROOT / 'src/fanmaster/Config.h')
+            self.assertTrue((root / 'outside').is_file())
+            with self.assertRaisesRegex(ValueError, 'within the resource directory'):
                 assets.pack(root)
 
     def test_upload_handshake_and_exact_acknowledgements(self):
@@ -51,13 +52,18 @@ class AssetTests(unittest.TestCase):
                 self.lines = []
                 self.received = bytearray()
                 self.uploading = False
+                self.return_seen = False
                 instances.append(self)
             def __enter__(self):
                 assert self.port == '/dev/fake'
                 assert self.dtr is False and self.rts is False
                 return self
-            def __exit__(self, *args): pass
-            def readline(self): return self.lines.pop(0) if self.lines else b''
+            def __exit__(self, typ, *args):
+                if typ is None: assert self.return_seen, 'Keep USB open until the main application returns'
+            def readline(self):
+                line = self.lines.pop(0) if self.lines else b''
+                if line.startswith(b'Fanmaster version '): self.return_seen = True
+                return line
             def write(self, value):
                 if not self.uploading and value == b'PING\n':
                     self.lines.append(b'PONG\n')
@@ -68,7 +74,8 @@ class AssetTests(unittest.TestCase):
                     self.received.extend(value)
                     suffix = '0' if self.bad_ack else ''
                     self.lines.append(f'ACK {len(self.received)}{suffix}\n'.encode())
-                    if len(self.received) == len(image): self.lines.append(b'DONE verified\n')
+                    if len(self.received) == len(image):
+                        self.lines.extend([b'DONE verified\n', b'ESP-ROM:esp32s3-20210327\n', b'Fanmaster version 1.5\n'])
                 return len(value)
         with mock.patch.dict('sys.modules', {'serial': types.SimpleNamespace(Serial=Serial)}):
             with mock.patch('builtins.print'):

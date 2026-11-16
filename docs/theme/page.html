@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="$description">
+  <meta name="theme-color" content="#f6f7f5">
+  <title>$title · $name Documentation</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/docs.css">
+  <script src="assets/search-index.js" defer></script>
+  <script src="assets/docs.js" defer></script>
+</head>
+<body class="$page_class">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Fanmaster documentation home">
+      <img src="assets/mark.svg" width="30" height="30" alt="">
+      <span>$name<span class="brand-divider"> / </span><span class="brand-subtitle">Documentation</span></span>
+    </a>
+    <div class="header-actions">
+      <span class="version">v$version</span>
+      <button type="button" class="search-trigger" id="searchOpen" aria-haspopup="dialog"><span aria-hidden="true">⌕</span> Search docs <kbd>⌘ K</kbd></button>
+      <a class="repo-link" href="$repository">GitHub <span aria-hidden="true">↗</span></a>
+      <button type="button" class="menu-trigger" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navigation">Menu</button>
+    </div>
+  </header>
+  <div class="site-layout">
+    <aside class="sidebar" id="navigation">
+      <nav aria-label="Documentation">$navigation</nav>
+      <div class="sidebar-foot"><span class="status-dot"></span> ESP32-S3 · Local-first control</div>
+    </aside>
+    <main id="main" tabindex="-1">
+      <div class="page-meta"><span>$group</span><span class="meta-line"></span><span>FANMASTER / $version</span></div>
+      <h1>$heading</h1>
+      <p class="page-description">$description</p>
+      <details class="mobile-toc"><summary>On this page</summary>$toc</details>
+      <article class="prose">$content</article>
+      <nav class="page-neighbors" aria-label="Adjacent pages">$previous$next</nav>
+      <footer class="page-footer"><span>Fanmaster reference · Built from repository sources</span><a href="sources/$source">Markdown source ↗</a></footer>
+    </main>
+    <aside class="on-this-page" aria-label="On this page"><p>ON THIS PAGE</p>$toc</aside>
+  </div>
+  <dialog id="searchDialog" aria-labelledby="searchTitle">
+    <div class="search-heading"><h2 id="searchTitle">Search documentation</h2><button type="button" id="searchClose" aria-label="Close search">Esc</button></div>
+    <label class="sr-only" for="searchInput">Search pages and sections</label>
+    <input id="searchInput" type="search" placeholder="Try: thermal, app1, GPIO…" autocomplete="off">
+    <p id="searchCount" class="search-count" aria-live="polite">Search pages and sections. Everything stays in your browser.</p>
+    <ul id="searchResults" class="search-results"></ul>
+  </dialog>
+</body>
+</html>

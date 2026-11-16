@@ -4,7 +4,15 @@
 
 namespace Config {
 
-constexpr char VERSION[] = "1.4";
+constexpr char VERSION[] = "1.5";
+
+namespace Updater {
+constexpr uint8_t CLICK_COUNT = 20;
+constexpr uint32_t CLICK_INTERVAL_MS = 1000;
+constexpr uint32_t CLICK_MAX_HOLD_MS = 1000;
+constexpr uint32_t RETURN_DELAY_MS = 10000;
+constexpr uint32_t EXIT_HOLD_MS = 10000;
+}  // namespace Updater
 
 namespace Pins {
 constexpr uint8_t FAN_TACH = 1;

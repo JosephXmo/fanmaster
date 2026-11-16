@@ -101,7 +101,7 @@ setting is saved as FMO2. Invalid records fall back to Config defaults. Older
 firmware cannot read FMO2. The Wi-Fi credential namespace is independent.
 
 Boot selects fixed **Duty** with fan supply **off**. The startup kick runs
-only after explicit key/web power-on; see [POWER_CONTROL.md](POWER_CONTROL.md). The
+only after explicit key/web power-on; see [fan supply control](power.md). The
 curve is restored if enabled, but THERMAL activation is never persisted.
 
 ## HTTP API
@@ -138,10 +138,10 @@ Status adds:
 
 ## Deployment and validation
 
-Rebuild the main application, repack and upload the **seven-resource** external
-image (including `/assets/thermal.js`), then restore the main application using
-[FLASH_RESOURCES.md](FLASH_RESOURCES.md). The uploader code and transfer protocol
-are unchanged. Update firmware and resources together for the new controls.
+For firmware/API changes, rebuild and flash app0, and repack/upload the
+**seven-resource** image when its UI changes. Resource-only changes reuse the
+resident app1 uploader, which returns to app0 automatically; there is no main
+reflash step. See [installation and assets](resources.md).
 
 Run:
 
@@ -174,7 +174,7 @@ concurrent clients, local controls and real temperature variation were exercised
 The shared-peripheral power test verified sensor-failure fallback and recovery
 without automatic thermal reentry. Gross TACH noise discovered during this test
 led to the configurable completed-window guard documented in
-[RPM_CONTROL.md](RPM_CONTROL.md). The guard does not eliminate all electrical
+[fixed RPM](rpm.md). The guard does not eliminate all electrical
 noise or distinguish an open TACH line from a stopped fan.
 
 A controlled upgrade from legacy firmware restored distinct 43% / 930 RPM
@@ -184,8 +184,8 @@ and restored board power. Actual HTTP confirmed the saved points/presets and
 startup in Duty 43%, without automatic THERMAL activation. Wi-Fi reconnected
 using its retained credentials.
 
-See [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md) for the initial functional
-run, final regression and evidence limits, and [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md)
+See [hardware validation](validation.md) for the initial functional
+run, final regression and evidence limits, and [Flash layout](storage.md)
 for final binary sizes and storage layout. Host checks and local simulated-browser
 checks complement, rather than replace, these target observations. Local
 screenshots remain ignored artifacts under `build/thermal-preview/`.

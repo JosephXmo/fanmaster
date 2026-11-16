@@ -1,4 +1,9 @@
-# ESP32-S3-Zero hardware acceptance — 2026-10-15
+# Hardware validation log
+
+This is a chronological evidence log, beginning with the 2026-10-15 tests.
+For the latest deployed revision, jump to [firmware 1.5 acceptance](#firmware-15-resident-updater-2026-11-16-target-acceptance).
+Earlier images, timings and limitations remain historical; current defaults are
+listed in [local controls](controls.md) and `src/fanmaster/Config.h`.
 
 This records measured results from the connected Waveshare ESP32-S3-Zero,
 not just host substitutes or successful compilation. The initial round used
@@ -414,7 +419,7 @@ and physical-screen checks are user observations; the local simulated-browser
 render and screenshots do not substitute for target execution.
 
 For exact firmware sections, internal partitions and the external resource
-schema, see [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md). Live NVS page occupancy,
+schema, see [Flash layout](storage.md). Live NVS page occupancy,
 independent temperature/speed calibration, long-duration reliability, isolated
 SHT30-only power loss, physical endpoints 550/1700 RPM and external load rejection
 remain outside this acceptance. A pre-existing `esp_cache_msync: invalid addr or
@@ -471,7 +476,7 @@ The seven-file SPI asset image is 36,579 bytes, CRC32 `45faa6c5`, SHA256
 `8428e7c740d48bc23e8e6af84491c1ff70ada5def977cd26b9c4f54bb752335e`.
 Its upload returned `DONE verified`. All seven resources, plus the `/` alias,
 subsequently matched the current source bytes through the board's HTTP server.
-See [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) for sections, partitions and resource
+See [Flash layout](storage.md) for sections, partitions and resource
 offsets. The uploader also commands the relay off during asset programming.
 
 The Python/C++ host suites and all three Node.js suites passed. Power tests
@@ -561,7 +566,7 @@ Source and image hashes were rechecked against the deployed build manifest
 after those tests. Serial monitoring was stopped and its port closed.
 Remaining hardware acceptance is the correctly wired relay module, measured
 active/inactive GPIO behavior (including reset), and actual 12 V off/on with
-the fan attached. See [POWER_CONTROL.md](POWER_CONTROL.md) for the reset-bias and
+the fan attached. See [fan supply control](power.md) for the reset-bias and
 commanded-state contract.
 
 ### Wake-prompt wording correction
@@ -577,10 +582,161 @@ not been visually reaccepted by the user.
 
 The corrected main application was rebuilt and flashed with esptool hash
 verification. Program usage, static RAM, image size and the section sizes in
-[MEMORY_LAYOUT.md](MEMORY_LAYOUT.md) are unchanged. Its SHA256 is
+[Flash layout](storage.md) are unchanged. Its SHA256 is
 `c5606d9c826c920544d28c0858046e1d5c9352b22d2ce44276fb95f0b0dab62d`;
 logs are `build/power-acceptance/prompt-build.log` and `prompt-flash.log`.
 The previous build hash above identifies the image used for the full acceptance
 run. SPI resources were unchanged and were not uploaded again. This upload
 reboots into the normal initial power-off/any-key state; the prior selected
 RPM mode is not persisted across resets.
+
+## Firmware 1.5 resident updater — 2026-11-16 target acceptance
+
+Both applications and the resource image were installed and tested on the
+connected Waveshare ESP32-S3-Zero from macOS, using ESP32 Arduino core 3.3.12
+and `esp32:esp32:esp32s3:CDCOnBoot=cdc`. The serial port was
+`/dev/cu.usbmodem1101`; the controller rejoined its saved Wi-Fi network at
+`192.168.30.215`. No Wi-Fi credentials were read or rewritten by this workflow.
+
+### Final artifacts and host checks
+
+| Artifact | Program bytes | Static RAM | Image bytes |
+| --- | ---: | ---: | ---: |
+| app0 Fanmaster 1.5 | 1,036,691 | 50,684 | 1,036,832 |
+| app1 ResourceUploader 1.5, including offline escape | 367,098 | 24,336 | 367,248 |
+| Seven-resource W25Q64 image | — | — | 38,267 |
+
+Both applications were flashed with esptool hash verification. Main was rebuilt
+and flashed again after adding Web Panel cancellation; app1 stayed unchanged.
+The final resource image includes the cancellation UI. Earlier transfer logs
+below refer to the pre-cancellation 38,071-byte image. Exact SHA256
+values, partition capacities and the SPI resource index are in
+[Flash layout](storage.md). Both compiled binaries contain the
+expected 40-byte role/version record at image offset 288. Final compile/install
+logs and the image manifest are in ignored `build/v1.5/` and
+`build/v1.5-acceptance/`.
+
+`sh scripts/check_host.sh` passed after the USB and offline-exit fixes. Coverage
+includes destination role/image validation, SDK selection errors, serial/HTTP
+selection without restart, click counting in either fan-power state, debounce,
+long-hold/chord cancellation, rollover, upload failure/retry, RETURN and delayed
+return. Offline-exit checks cover the exact ten-second threshold, short holds,
+raw release, rollover and missing/invalid app0. The existing power, RPM,
+THERMAL, NVS, HTTP and resource suites also pass. Button power checks use the
+current Config values (shutdown 3 s, wake chord 500 ms), preserving the preceding
+power-configuration commit rather than restoring historical 8 s / 1 s defaults.
+
+Cancellation host tests additionally cover successful/idempotent app0 selection,
+missing/wrong-role app0, SDK failure without losing the selected app1 target,
+and cancellation when app1 is unavailable. Panel tests cover cancellation errors,
+command locking and cancellation of a selection made by another input.
+
+Seven Python tests passed, including installer layout/role/size rejection and
+keeping USB open until the main banner after success. All three Node.js suites
+passed, including next-boot polling and updater command/error UI. Installer dry
+runs verified app1-only writes at `0x150000`, and initial dual-slot writes at
+`0`, `0x8000`, `0xe000`, `0x10000`, `0x150000`, without writing NVS.
+
+### USB reset issue found and fixed on target
+
+The first transfer attempt revealed that opening native USB/JTAG serial on this
+board causes `USB_UART_CHIP_RESET`, even with DTR/RTS deasserted before opening.
+The initial uploader selected app0 on entry, so the host opening serial reset
+straight back into main and timed out. This was reproduced in
+`first-transfer.log` and `first-transfer-serial.jsonl`.
+
+The final uploader keeps app1 selected during idle, transfer and failure. It
+selects app0 only on verified success, serial RETURN or the offline exit hold.
+The host transfer script keeps its serial handle open through the ten-second
+countdown and waits for `Fanmaster version 1.5`, avoiding a close/reopen reset
+that could interrupt the countdown. A separate external reset after success can
+still return to app0 sooner than the software timer.
+
+### Target results
+
+| Test | Observed result / evidence |
+| --- | --- |
+| Serial `boot updater` | Next-boot selection succeeded; main continued for more than a minute; user RESET entered uploader. `first-main.jsonl`, `serial-selected.json`. |
+| HTTP entry | Selection returned next-boot true without reboot, and user RESET entered uploader. `http-selected.json`. |
+| Actual Web Panel button | Maintenance text changed to manual-restart guidance and telemetry continued. The initial revision disabled the selected button (`web-updater-selected.jpg`); the final revision enables it as Cancel updater on next boot. |
+| Button 4 twenty-click entry | User performed more than twenty clicks; status showed app1 selected while main continued. `button-selected.json`. Initial boot-any-key wake still applies; presets did not change. |
+| Verified upload | Serial READY/ACK/DONE completed. From DONE at 1.740 s to software reset at 11.961 s: **10.221 s**. Main banner at 12.442 s; host reported `RETURN app0 observed`. `verified-transfer.log`, matching timestamped JSONL. |
+| OLED | User confirmed waiting screen, increasing progress, Done verified / 100%, countdown and automatic return to the main boot prompt. |
+| Offline exit | With no serial program connected, user confirmed a five-second hold/release stayed in uploader; a new continuous ten-second hold returned to app0 immediately. `after-offline-exit.json` confirms main / next-boot false. |
+| Interrupted transfer | Sent only the first 256 bytes after READY. ACK at 0.667 s; upload error at 5.692 s. After another 12 s, PING still returned PONG at 17.894 s, with no automatic reset. `interrupted-transfer.log`, matching JSONL. |
+| Retry after interruption | Reopened serial, remained in uploader, retransferred the full image. DONE at 1.597 s; software reset at 11.821 s (**10.224 s** later); main banner at 12.305 s. `recovery-transfer.log`, matching JSONL. |
+| Final resource upload | Final 38,267-byte image: DONE at 1.689 s, software reset at 11.912 s (10.223 s later), main banner at 12.395 s. `cancel-assets-transfer.log`. |
+| Resource integrity | All seven served resources matched local source bytes and `/` matched `/index.html`, repeated after recovery and the final cancellation UI upload. `resource-results.json`, `recovered-resource-results.log`, `cancel-resource-results.log`. |
+| Web cancellation | Selected the updater using the real panel, observed the enabled Cancel updater on next boot button, then cancelled from that button. Main continued with the original fan settings. `web-cancel-available.jpg`, `web-updater-cancelled.jpg`, `web-cancelled.json`. A subsequent USB reset booted Fanmaster 1.5, not the updater (`after-cancel-reboot.jsonl`). |
+
+The original manual duty **35%**, target **900 RPM** and curve
+**25°C/35%, 40°C/65%, 80°C/90%** were retained. Final state is app0 running,
+next-boot updater false, fan power command off, PWM 0%, and the any-key startup
+prompt; saved Wi-Fi reconnected. `web-cancelled.json` records the cancellation result; `final-state.json` confirms
+the same state and retained presets after the subsequent USB reset.
+
+These observations establish boot-slot switching, real SPI transfer/retry,
+software countdown, Web Panel/serial entries and user-observed OLED/buttons on
+this board. They do not establish physical relay/12 V switching (wiring was not
+reconfirmed), power-loss atomicity, damaged-app recovery, OTA rollback or Linux/
+Windows runtime acceptance. Serial RETURN and invalid-destination cases were
+covered by host tests, not a separate target cycle. See [resident updater](updater.md).
+
+## Documentation and panel layout — 2026-11-16 (host only)
+
+The standalone reference site consolidates the repository guides under
+`docs/content/`; README is now a short project entrypoint. It is built separately
+into `build/docs/`, with no CDN dependency and no firmware/device API calls.
+All 17 generated HTML pages served byte-identically from the local preview;
+local links and fragments were validated by the builder. Browser checks covered
+search-to-API-anchor navigation, the mobile menu, and 390 px reading width
+without whole-page horizontal overflow.
+
+The maintenance card previously had no padding rule. It now shares thermal-card
+spacing: 30 px on desktop, and 24 px vertical / 18 px horizontal below 600 px.
+These computed values and the corrected desktop/mobile appearance were checked
+against a read-only local panel preview. The resource pack still contains only
+the seven HTML/CSS/JS files from `web/`; its new source-only image is 38,274 bytes.
+The documentation site is outside that image. Screenshots are in ignored
+`build/docs-desktop.jpg`, `build/docs-mobile.jpg`, and
+`build/panel-padding-desktop.jpg` / `build/panel-padding-mobile.jpg`.
+
+No firmware build or target upload was performed for these CSS/documentation
+changes. The previously recorded deployed image sizes/hashes remain the last
+hardware measurements, rather than measurements of the new source pack.
+
+## Source-layout rebuild — 2026-11-16 (host only)
+
+After moving the main sketch to `src/fanmaster/` and the resident uploader to
+`src/ResourceUploader/`, build scripts, host tests and documentation paths were
+updated together. The staging helper checks the actual sketch and shared
+dependencies before copying, removes obsolete source files from reused staging
+directories, and rejects staging into `src/`. Three new regression tests cover
+these cases, including missing originals despite an old staged copy.
+
+Fresh builds used Arduino CLI **1.6.0**, ESP32 Arduino core **3.3.12**, and FQBN
+`esp32:esp32:esp32s3:CDCOnBoot=cdc`, with the local native Arduino ctags override.
+Both staged sketches were compared byte-for-byte with their current sources.
+
+| Build | Program bytes | Static RAM bytes | Application image bytes | Slot capacity |
+| --- | ---: | ---: | ---: | ---: |
+| Main / app0 | 1,036,691 | 50,684 | 1,036,832 | 1,310,720 |
+| Resident uploader / app1 | 367,098 | 24,336 | 367,248 | 1,310,720 |
+
+Both application images fit their slots and contain the expected role marker
+and version **1.5** at offset 288. Their partition tables are identical.
+Installer dry runs passed for app1-only installation at `0x150000` and initial
+dual-slot installation at `0`, `0x8000`, `0xe000`, `0x10000`, `0x150000`.
+Neither plan writes NVS; dry runs do not open the serial port.
+
+`sh scripts/check_host.sh` passed all **10 Python tests** and all nine C++
+suites (buttons, boot, power, RPM, thermal, shared state, firmware, HTTP and
+uploader). All three Node.js suites (`test_setup`, `test_panel`, `test_thermal`)
+passed. The seven-file resource image packed and verified at **38,274 bytes**.
+The documentation site rebuilt all **17 pages**, validating local links and
+anchors. Logs, installer plans and image SHA256 values are retained in ignored
+`build/reorganized/`, including `manifest.json`.
+
+This round performed compilation and host checks only, with no device flashing
+or new hardware acceptance. The preceding deployed storage measurements remain
+the hardware record; the new resource image has not been uploaded.

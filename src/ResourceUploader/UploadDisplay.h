@@ -20,7 +20,8 @@ public:
         return ready_;
     }
 
-    void show(const char *phase, uint32_t completed = 0, uint32_t total = 0) {
+    void show(const char *phase, uint32_t completed = 0, uint32_t total = 0,
+              uint32_t returnSeconds = 0) {
         if (!ready_) return;
         const uint32_t now = millis();
         const bool phaseChanged = !lastPhase_ || strcmp(lastPhase_, phase) != 0;
@@ -43,13 +44,22 @@ public:
             display_.print(percent);
             display_.print('%');
             display_.setCursor(0, 40);
-            display_.print(done);
-            display_.print('/');
-            display_.print(total);
-            display_.print(" B");
+            if (returnSeconds) {
+                display_.print("app0 in ");
+                display_.print(returnSeconds);
+                display_.print(" seconds");
+            } else {
+                display_.print(done);
+                display_.print('/');
+                display_.print(total);
+                display_.print(" B");
+            }
             const int16_t width = display_.width() - 2;
             display_.drawRect(0, 53, width + 2, 10, SSD1306_WHITE);
             display_.fillRect(1, 54, static_cast<uint64_t>(done) * width / total, 8, SSD1306_WHITE);
+        } else {
+            display_.setCursor(0, 40);
+            display_.print("Hold * 10s: app0");
         }
         display_.display();
     }

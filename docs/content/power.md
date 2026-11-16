@@ -37,7 +37,7 @@ boost, PWM stays at 100%; accepted mode/setpoint changes take effect afterwards.
 
 ## Local power-off
 
-Only hold the function key **button 4 (`*`) alone for eight seconds** to power
+Only hold the function key **button 4 (`*`) alone for three seconds** to power
 off locally. Timing starts after its debounced press. Any other button already
 held, subsequently pressed or released during that session cancels shutdown.
 The ordinary adjustment/LED chord behavior still applies to those other keys.
@@ -60,14 +60,18 @@ line breaks to fit the 128×64 display:
 
 > Hold ^ and * for 1 second to power on the fan.
 
+The hint is a fixed string; the actual wake threshold is
+`Power::WAKE_HOLD_MS` (currently 500 ms). Shutdown uses
+`Power::SHUTDOWN_HOLD_MS` (currently 3000 ms).
+
 A later key edge restarts the hint interval; holding a key does not refresh the
 hint through its adjustment-repeat events. Afterwards the OLED sleeps again.
 Buttons otherwise do not edit settings, switch mode or toggle the LED while off.
 
-Hold **button 1 (`^`) + button 4 (`*`) together for one continuous second** to
+Hold **button 1 (`^`) + button 4 (`*`) together for 500 ms** to
 restore power. Either press order works. Releasing either key, or holding button
 2/3, resets this wake interval. Once the extra key is released, both intended
-keys must again remain down for a full second. The complete wake gesture is
+keys must again remain down for a full 500 ms. The complete wake gesture is
 consumed until every key has been released, preventing an accidental fine step,
 mode click or new shutdown countdown. A web power transition also consumes any
 in-progress local gesture until release.
@@ -84,7 +88,7 @@ resume duty.
 Temperature validity is still checked while off. A failed/non-finite/stale sample
 exits retained THERMAL to its preceding fixed mode, and recovery never re-enables
 THERMAL automatically. Startup completion also checks freshness before restoring
-a thermal output. See [THERMAL_CONTROL.md](THERMAL_CONTROL.md).
+a thermal output. See [temperature control](thermal.md).
 
 Fixed changes and enabling THERMAL are blocked while power is off. The saved
 curve remains editable, including through the API, without closing the relay.
@@ -117,13 +121,13 @@ are disabled while off, while the curve editor remains available.
 Repack/upload the updated seven-resource image and flash the main application.
 The uploader also initializes the relay **off** and never enables it. Its OLED
 upload progress remains active; its protocol and NVS behavior are unchanged.
-See [FLASH_RESOURCES.md](FLASH_RESOURCES.md).
+See [installation and assets](resources.md).
 
 ## Validation
 
 `sh scripts/check_host.sh` includes power-gesture and controller/OLED tests for
-8-second thresholds, interruption lockout, raw release, pre-held keys, boot-any-key,
-1-second chord in either order, consumed releases/repeats, timer rollover,
+the configured shutdown threshold, interruption lockout, raw release, pre-held keys, boot-any-key,
+the configured wake chord in either order, consumed releases/repeats, timer rollover,
 boot-off GPIO/PWM state, nonblocking startup, idempotent requests, suspended PI,
 retained modes, sensor fallback, interrupted boosts and 1.5-second OLED sleep.
 HTTP tests cover parsing/status/409 behavior and curve editing while off. The
@@ -132,5 +136,5 @@ handlers, errors and shared command locking. Active-low configuration is also
 compiled/exercised in an isolated host-test build.
 
 Target-board results and remaining physical relay checks are recorded separately
-in [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md). No software-state test alone
+in [hardware validation](validation.md). No software-state test alone
 establishes relay contact operation or removal of the fan's actual 12 V supply.

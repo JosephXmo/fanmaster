@@ -4,6 +4,7 @@
 
 #include "ButtonInputs.h"
 #include "ButtonControls.h"
+#include "BootSlots.h"
 #include "Config.h"
 #include "ClimateReading.h"
 #include "FanController.h"
@@ -15,6 +16,9 @@
 #include "StatusLed.h"
 #include "WebPanel.h"
 #include "WifiStation.h"
+
+FANMASTER_APP_IDENTITY
+const FirmwareIdentity::Descriptor mainIdentity = FirmwareIdentity::make("fanmaster");
 
 namespace {
 
@@ -87,6 +91,11 @@ void applyButtonActions()
 {
     const FanSnapshot state = fan.snapshot();
     const ButtonActions actions = buttonControls.update(buttons, state.powerEnabled, state.waitingForPowerKey);
+    if (actions.selectUpdaterRequested) {
+        const esp_err_t result = BootSlots::selectUpdater();
+        Serial.println(result == ESP_OK ? "Next boot: app1 ResourceUploader. Restart manually."
+                                       : "ERROR: updater selection failed; install a valid app1 updater.");
+    }
     if (actions.powerHintRequested) oled.requestPowerHint();
     if (actions.powerOffRequested) fan.setPowerEnabled(false);
     if (actions.powerOnRequested) fan.setPowerEnabled(true);
@@ -204,6 +213,8 @@ void setup()
     delay(200);
 
     Serial.println();
+    Serial.print("Fanmaster version ");
+    Serial.println(mainIdentity.version); // Also retain the on-flash role descriptor.
     if (!Config::SerialConsole::PLOTTER_MODE) {
         Serial.println("ESP32 PWM fan controller starting...");
     }
@@ -248,7 +259,7 @@ void setup()
 
     Serial.println();
     Serial.println("Enter an integer from 0 to 100 to change duty cycle.");
-    Serial.println("Or: rpm <target>, mode rpm, mode duty.");
+    Serial.println("Or: rpm <target>, mode rpm, mode duty, boot updater.");
 
     // WebServer's parser can yield without sleeping. Share idle priority so
     // IDLE0 still runs/feeds its watchdog even during a slow request header.

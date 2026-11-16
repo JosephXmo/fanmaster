@@ -10,6 +10,7 @@ let state = {
   rpm: 810, duty_percent: 39, manual_duty_percent: 35, wifi_connected: true,
   mode: 'rpm', target_rpm: 850, min_rpm: 550, max_rpm: 1700, poll_interval_ms: 1000,
   power_enabled: true,
+  updater_available: true, updater_next_boot: false,
 };
 let failPost = false, releasePost;
 let delayPost = false;
@@ -31,7 +32,11 @@ vm.runInNewContext(source, {
     if (options.method === 'POST') {
       if (delayPost) await new Promise(resolve => { releasePost = resolve; });
       if (failPost) return { ok: false, status: 400, json: async () => ({ error: 'Rejected target' }) };
-      if (url === '/api/fan/power') {
+      if (url === '/api/updater/select') {
+        state = { ...state, updater_next_boot: true };
+      } else if (url === '/api/updater/cancel') {
+        state = { ...state, updater_next_boot: false };
+      } else if (url === '/api/fan/power') {
         state = { ...state, power_enabled: options.body.get('enabled') === '1' };
       } else if (url === '/api/fan/rpm') {
         state = { ...state, mode: 'rpm', target_rpm: Number(options.body.get('rpm')) };
@@ -121,4 +126,48 @@ await field('powerToggle').click();
 assert.equal(state.power_enabled, true);
 assert.match(field('powerMessage').textContent, /Rejected target/);
 assert.equal(field('powerToggle').disabled, false);
-console.log('Panel RPM limits, manual setting, edits, mode changes and request-state tests passed');
+failPost = true;
+await field('selectUpdater').click();
+assert.equal(state.updater_next_boot, false);
+assert.match(field('updaterState').textContent, /Rejected target/);
+assert.equal(field('selectUpdater').disabled, false);
+failPost = false;
+state.power_enabled = false; await poll();
+await field('selectUpdater').click();
+assert.equal(requests.at(-1).url, '/api/updater/select');
+assert.equal(state.updater_next_boot, true);
+assert.equal(state.power_enabled, false);
+assert.equal(field('selectUpdater').disabled, false);
+assert.match(field('selectUpdater').textContent, /Cancel updater/);
+assert.match(field('updaterState').textContent, /Restart the board manually/);
+await poll();
+assert.match(field('updaterState').textContent, /Updater selected/);
+failPost = true;
+await field('selectUpdater').click();
+assert.equal(requests.at(-1).url, '/api/updater/cancel');
+assert.equal(state.updater_next_boot, true);
+assert.match(field('updaterState').textContent, /Rejected target/);
+assert.equal(field('selectUpdater').disabled, false);
+failPost = false;
+state.updater_available = false; await poll();
+assert.equal(field('selectUpdater').disabled, false, 'Cancellation must work even if app1 is unavailable');
+delayPost = true;
+const cancelling = field('selectUpdater').click();
+await flush();
+assert.equal(field('selectUpdater').disabled, true);
+releasePost(); await cancelling; delayPost = false;
+assert.equal(state.updater_next_boot, false);
+assert.equal(state.power_enabled, false);
+assert.match(field('selectUpdater').textContent, /Use updater/);
+assert.equal(field('selectUpdater').disabled, true); // app1 is still unavailable.
+state.updater_available = true; await poll();
+assert.equal(field('selectUpdater').disabled, false);
+state.updater_next_boot = true; await poll(); // Local/serial scheduling is cancellable too.
+await field('selectUpdater').click();
+assert.equal(state.updater_next_boot, false);
+state.updater_next_boot = false; state.updater_available = false; await poll();
+const unavailableCount = requests.length;
+await field('selectUpdater').click();
+assert.equal(requests.length, unavailableCount);
+assert.match(field('updaterState').textContent, /unavailable/);
+console.log('Panel controls, power, updater scheduling, errors and request-state tests passed');

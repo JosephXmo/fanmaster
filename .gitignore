@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 build/
 .venv/
+.venv-docs/
+.DS_Store

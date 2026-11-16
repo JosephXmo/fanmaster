@@ -8,6 +8,7 @@
 #include "FanController.h"
 #include "WebPanel.h"
 #include "WifiStation.h"
+#include "BootSlots.h"
 
 unsigned serviceCount = 0;
 void localControls() { ++serviceCount; }
@@ -27,9 +28,42 @@ int main(int argc, char **argv)
     ClimateReading climate;
     panel.begin(fan, wifi, localControls, climate);
     auto &server = *WebServer::instance;
+    fakeSlotPresent[1] = false;
+    server.request("/api/updater/select", HTTP_POST);
+    assert(server.status == 503 && !BootSlots::updaterSelected());
+    fakeSlotPresent[1] = true;
+    fakeBootWriteResult = -123;
+    server.request("/api/updater/select", HTTP_POST);
+    assert(server.status == 500 && !BootSlots::updaterSelected());
+    fakeBootWriteResult = ESP_OK;
+    server.request("/api/updater/select", HTTP_POST);
+    assert(server.status == 200 && BootSlots::updaterSelected() && fakeRestartCount == 0);
+    assert(!fan.snapshot().powerEnabled);
+    assert(server.socket.body.find("\"updater_next_boot\":true") != std::string::npos);
+    assert(server.socket.body.find("\"firmware_version\":\"1.5\"") != std::string::npos);
     server.request("/api/status", HTTP_GET);
     assert(server.status == 200 && server.socket.body.find("\"power_enabled\":false") != std::string::npos);
+    assert(server.socket.body.find("\"updater_next_boot\":true") != std::string::npos);
     assert(server.socket.body.find("\"power_waiting_for_key\":true") != std::string::npos);
+    fakeBootWriteResult = -123;
+    server.request("/api/updater/cancel", HTTP_POST);
+    assert(server.status == 500 && BootSlots::updaterSelected());
+    fakeBootWriteResult = ESP_OK;
+    fakeProjects[0] = "ResourceUploader";
+    server.request("/api/updater/cancel", HTTP_POST);
+    assert(server.status == 503 && BootSlots::updaterSelected());
+    fakeProjects[0] = "fanmaster";
+    fakeSlotPresent[1] = false; // Cancelling does not require a readable updater.
+    server.request("/api/updater/cancel", HTTP_POST);
+    assert(server.status == 200 && !BootSlots::updaterSelected() && fakeRestartCount == 0);
+    assert(server.socket.body.find("\"updater_next_boot\":false") != std::string::npos);
+    assert(!fan.snapshot().powerEnabled && fan.snapshot().waitingForPowerKey);
+    const auto cancelledPreset = fan.snapshot();
+    server.request("/api/updater/cancel", HTTP_POST); // Idempotent; no fan-setting changes.
+    assert(server.status == 200 && fakeRestartCount == 0);
+    assert(fan.snapshot().manualDutyPercent == cancelledPreset.manualDutyPercent);
+    assert(fan.snapshot().targetRpm == cancelledPreset.targetRpm);
+    fakeSlotPresent[1] = true;
     for (const char *invalid : {"", "2", "-1", "true", "0.5", "4294967297"}) {
         server.request("/api/fan/power", HTTP_POST, {{"enabled", invalid}});
         assert(server.status == 400 && !fan.snapshot().powerEnabled);

@@ -1,0 +1,34 @@
+{
+  "name": "Fanmaster",
+  "version": "1.5",
+  "repository": "https://github.com/JosephXmo/fanmaster",
+  "groups": [
+    { "title": "Start here", "pages": [
+      { "source": "overview.md", "slug": "index", "title": "Overview", "description": "One fan. Three control modes. Local and browser control built on the same state." },
+      { "source": "hardware.md", "slug": "hardware", "title": "Hardware & pins", "description": "Wiring, peripherals and Config defaults for the ESP32-S3-Zero." },
+      { "source": "controls.md", "slug": "controls", "title": "Local controls", "description": "Buttons, serial commands, mode switching and power gestures." }
+    ]},
+    { "title": "Operate", "pages": [
+      { "source": "rpm.md", "slug": "rpm", "title": "Fixed RPM", "description": "Filtered feedback, tuning limits and setpoint memory." },
+      { "source": "thermal.md", "slug": "thermal", "title": "Temperature curve", "description": "Three points, linear interpolation and predictable sensor fallback." },
+      { "source": "power.md", "slug": "power", "title": "Fan supply", "description": "Relay output, boot-off behavior and retained control state." },
+      { "source": "led.md", "slug": "led", "title": "Status LED", "description": "TACH-driven color and flash indication." },
+      { "source": "network.md", "slug": "network", "title": "Wi-Fi & panel", "description": "Provisioning, dashboard behavior and LAN troubleshooting." }
+    ]},
+    { "title": "Build & maintain", "pages": [
+      { "source": "building.md", "slug": "building", "title": "Build environment", "description": "Toolchain setup on macOS, Linux and Windows." },
+      { "source": "resources.md", "slug": "resources", "title": "Installation & assets", "description": "Initial dual-slot installation and subsequent resource-only updates." },
+      { "source": "updater.md", "slug": "updater", "title": "Resident updater", "description": "Next-boot selection, cancellation, serial transfer and offline escape." }
+    ]},
+    { "title": "Reference", "pages": [
+      { "source": "api.md", "slug": "api", "title": "HTTP API", "description": "Status snapshots, commands, validation and response codes." },
+      { "source": "architecture.md", "slug": "architecture", "title": "Architecture", "description": "Task ownership, shared state, source map and remaining work." },
+      { "source": "storage.md", "slug": "storage", "title": "Flash layout", "description": "Measured image sizes, ESP32 partitions and W25Q64 resource schema." }
+    ]},
+    { "title": "Project records", "pages": [
+      { "source": "validation.md", "slug": "validation", "title": "Hardware validation", "description": "Dated target measurements, accepted behavior and evidence boundaries." },
+      { "source": "storage-2026-10-18.md", "slug": "storage-2026-10-18", "title": "Historical storage", "description": "The preserved 2026-10-18 image and partition snapshot." },
+      { "source": "documentation.md", "slug": "documentation", "title": "Documentation workflow", "description": "Build, preview and maintain this independent static reference site." }
+    ]}
+  ]
+}

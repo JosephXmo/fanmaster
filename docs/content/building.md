@@ -2,15 +2,16 @@
 
 This guide prepares a host for both the Fanmaster application and the separate
 W25Q64 resource uploader. Continue with the complete upload sequence in
-[FLASH_RESOURCES.md](FLASH_RESOURCES.md#build-and-upload) after setup.
-Commands run from the repository root, where `Config.h` and `scripts/` live.
+[installation and assets](resources.md#build-and-upload) after setup.
+Commands run from the repository root, where `scripts/` lives. Firmware sources
+are in `src/fanmaster/`; shared configuration is `src/fanmaster/Config.h`.
 The firmware configuration and wiring are the same on every host OS.
 
 ## Tools
 
 | Tool | Purpose | Version / requirement |
 | --- | --- | --- |
-| Arduino CLI | Install ESP32 support/libraries, compile and flash | 1.5.1 |
+| Arduino CLI | Install ESP32 support/libraries, compile and flash | 1.6.0 |
 | ESP32 Arduino core | ESP32-S3 toolchain and built-in Wi-Fi/FreeRTOS | 3.3.12 |
 | Python 3 | Stage sketches, pack/verify assets and transfer resources | Use Python 3.9 or newer |
 | pyserial | Transfer the resource image and list serial ports | 3.5 |
@@ -101,7 +102,7 @@ cd fanmaster
 
 Use the staging script even when building from Arduino IDE. It creates a
 correctly named sketch directory and includes the shared files; the uploader
-under `tools/` cannot be built by itself without those files. Edit originals in
+under `src/ResourceUploader/` cannot be built by itself without those files. Edit originals in
 this checkout and stage again after changes.
 
 ## ESP32 core and Arduino libraries
@@ -154,6 +155,16 @@ py -3 -m venv .venv
 Packing and verifying assets needs only Python's standard library. pyserial is
 needed for the resource transfer, not for compilation or esptool-based firmware
 upload through Arduino CLI.
+
+Firmware 1.5 also provides `scripts/install_updater.py` for the resident app1
+updater. Install `esptool==5.3.1` into this same venv (Python 3.10+ required for
+esptool 5.x), or pass `--esptool /path/to/esptool` to use Arduino's standalone
+bundled executable. An older Python can run the installer with that executable.
+The installer
+checks matching build partition tables and application roles; it writes only
+app1 by default, or both applications with `--install-both` for initial setup.
+See [installation and assets](resources.md#build-and-upload) for commands on
+all three host platforms and [resident updater](updater.md) for boot selection.
 
 ## Identify and access the serial port
 
@@ -212,12 +223,16 @@ than CRLF line endings. This host-test route does not require USB forwarding.
 The `.sh` script is not a PowerShell
 script; native Windows firmware builds use Python and Arduino CLI as above.
 
+Host checks first verify both source trees can be staged with the same Config,
+removed sources do not survive in a reused staging directory, and missing source
+files fail rather than accepting an older staged sketch.
+
 Host checks cover input state/timing, shared climate snapshots, Wi-Fi/NVS
 failures, HTTP/resource streaming, uploader integrity/OLED status, and browser
 setup and thermal-widget logic with substitutes. They do not prove hardware or OS USB acceptance.
 Linux and Windows commands are documented for use but have not been run on
 those systems in this session. Recorded physical-board results are from macOS
-and are in [HARDWARE_TEST_REPORT.md](HARDWARE_TEST_REPORT.md).
+and are in [hardware validation](validation.md).
 
 ## Troubleshooting
 

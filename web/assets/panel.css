@@ -231,7 +231,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .control h2, .thermal h2 {
+    .control h2, .thermal h2, .maintenance h2 {
       margin: 15px 0 8px;
       font-family: Georgia, serif;
       font-size: 34px;
@@ -372,7 +372,7 @@
 
     .power-control { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 20px; }
     #powerToggle[aria-pressed="true"] { background: var(--mint); }
-    .thermal { grid-column: 1 / -1; padding: 30px; }
+    .thermal, .maintenance { grid-column: 1 / -1; padding: 30px; }
     .thermal-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
     .thermal-heading h2 { margin-bottom: 0; }
     .thermal-heading button { width: auto; margin: 0; }
@@ -393,7 +393,7 @@
     input:disabled { opacity: .6; }
     @media (max-width: 900px) { .thermal-body { grid-template-columns: 1fr; } }
     @media (max-width: 600px) {
-      .thermal { padding: 24px 18px; }
+      .thermal, .maintenance { padding: 24px 18px; }
       .thermal-heading { align-items: stretch; flex-direction: column; }
       .thermal-heading button { width: 100%; }
       .thermal-points { gap: 6px; }

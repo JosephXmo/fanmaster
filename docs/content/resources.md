@@ -25,13 +25,13 @@ same supply voltage. All grounds must be common.
 to delimit commands. Firmware 1.4 adopts the carrier wiring from the telemetry
 branch: fan TACH/PWM on GPIO 1/2, I2C on GPIO 3/4, buttons on GPIO 7..10,
 and RGB LED on GPIO 21. GPIO 11/5/6/12 are therefore available for SPI.
-All four SPI pins remain configurable; GPIO 13 is also unused in this layout.
+All four SPI pins remain configurable; GPIO 13 controls the fan-supply relay.
 The adapter checks GPIO collisions at compile time. SPI speed defaults to
 10 MHz and is configurable in `Config::Storage`.
 
 ## Build and upload
 
-First follow [BUILDING.md](BUILDING.md) for macOS, Linux or Windows tool
+First follow [build environment](building.md) for macOS, Linux or Windows tool
 installation, the ESP32 core/libraries, the `.venv` environment and serial-port
 permissions. The examples below use only repository-local `build/` paths and
 run from the repository root. Close any serial monitor before uploading.
@@ -42,96 +42,90 @@ uses SPIMemory and the Adafruit SSD1306/GFX/BusIO libraries for optional OLED
 progress; it does not run the fan application or change NVS. Its OLED uses the
 same I2C pins, address and dimensions from Config as the application.
 
-The sequence is: pack/verify resources → flash the uploader → transfer resources
-until `DONE verified` → flash the application. Run commands one at a time and
-stop if any command fails. Recheck the port after firmware upload; USB
-reenumeration may change it. The uploader replaces the running fan application
-temporarily; the final application upload restores fan control.
+The Web Panel can cancel a pending updater selection before restarting, returning
+the next boot target to app0 without changing fan settings.
 
-### macOS / Linux shell
+Starting with **1.5**, the main application resides in **app0** and the serial
+resource uploader resides in **app1**. Install both once; later asset updates
+only need boot selection, a manual restart and the existing serial transfer.
+See [resident updater](updater.md) for boot semantics, API, button timing and recovery.
+Do not use Arduino CLI's normal uploader-sketch upload: it writes app0.
 
-Use your actual port from `arduino-cli board list`. The example assignment is
-for macOS; on Linux use the appropriate `/dev/ttyACM0` or `/dev/ttyUSB0` instead.
-`FM_PYTHON` and `FM_PORT` remain set for the commands in this terminal.
+### Initial installation: macOS / Linux shell
+
+Use the actual port (`/dev/ttyACM0` is a common Linux example). Install esptool
+in the same virtual environment as pyserial (Python 3.10+ for esptool 5.x), then build both sketches using the
+same FQBN and Config. Run commands individually and stop on a failure.
 
 ```sh
 FM_PYTHON=./.venv/bin/python
 FM_PORT=/dev/cu.usbmodem101
-arduino-cli board list
+"$FM_PYTHON" -m pip install esptool==5.3.1
+"$FM_PYTHON" scripts/build_firmware.py main --work-dir build/main
+"$FM_PYTHON" scripts/build_firmware.py uploader --work-dir build/uploader
+"$FM_PYTHON" scripts/install_updater.py --port "$FM_PORT" --install-both --dry-run
+"$FM_PYTHON" scripts/install_updater.py --port "$FM_PORT" --install-both
+"$FM_PYTHON" scripts/assets.py pack --output build/fanmaster-assets.bin
+"$FM_PYTHON" scripts/assets.py verify build/fanmaster-assets.bin
 ```
 
-1. Pack and verify the files in `web/`:
+The installer checks both generated partition tables and application role
+markers, then writes the bootloader, partition table, OTA initialization, main
+image at `0x10000` and uploader at `0x150000`. It does not erase/write the NVS
+partition. The default 4 MiB partition layout is required. `--dry-run` prints the
+write plan without accessing a device. To install/update **only app1**, omit
+`--install-both`; the same build directories are used to check the layout.
 
-   ```sh
-   "$FM_PYTHON" scripts/assets.py pack --output build/fanmaster-assets.bin
-   "$FM_PYTHON" scripts/assets.py verify build/fanmaster-assets.bin
-   ```
+For the first asset upload, send **`boot updater`** followed by Enter in the main
+firmware's serial console. It sets the next boot to app1 and does **not** restart.
+Close the console, manually press RESET, recheck the USB port, then run:
 
-2. Build and flash the uploader:
+```sh
+"$FM_PYTHON" scripts/assets.py upload build/fanmaster-assets.bin --port "$FM_PORT"
+```
 
-   ```sh
-   "$FM_PYTHON" scripts/build_firmware.py uploader --work-dir build/uploader
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port "$FM_PORT" --input-dir build/uploader/build build/uploader/ResourceUploader
-   ```
+After `DONE verified`, keep the transfer command running: it holds USB open
+through the ten-second countdown and reports `RETURN app0 observed` after restart.
+There is no main-firmware reflash step. The new Web Panel becomes available after
+this transfer. Future entries can use its maintenance button, the serial command,
+or twenty clicks of button 4.
 
-3. With the uploader running, transfer the resource image:
+### Initial installation: Windows PowerShell
 
-   ```sh
-   "$FM_PYTHON" scripts/assets.py upload build/fanmaster-assets.bin --port "$FM_PORT"
-   ```
-
-4. After `DONE verified`, build and flash the application:
-
-   ```sh
-   "$FM_PYTHON" scripts/build_firmware.py main --work-dir build/main
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port "$FM_PORT" --input-dir build/main/build build/main/fanmaster
-   ```
-
-### Windows PowerShell
-
-Set the actual COM port from `arduino-cli board list` or Device Manager. The
-call operator `&` invokes the Python path stored in `$FmPython`. Each command
-is a single line; do not use shell `\` line continuations in PowerShell.
+Set the actual COM port from Device Manager or `arduino-cli board list`. `&`
+invokes the Python executable stored in `$FmPython`.
 
 ```powershell
 $FmPython = "./.venv/Scripts/python.exe"
 $FmPort = "COM5"
-arduino-cli board list
+& $FmPython -m pip install esptool==5.3.1
+& $FmPython scripts/build_firmware.py main --work-dir build/main
+& $FmPython scripts/build_firmware.py uploader --work-dir build/uploader
+& $FmPython scripts/install_updater.py --port $FmPort --install-both --dry-run
+& $FmPython scripts/install_updater.py --port $FmPort --install-both
+& $FmPython scripts/assets.py pack --output build/fanmaster-assets.bin
+& $FmPython scripts/assets.py verify build/fanmaster-assets.bin
 ```
 
-1. Pack and verify the files in `web/`:
+Send `boot updater` in the main serial console, close it, restart manually and
+recheck `$FmPort`. Then transfer:
 
-   ```powershell
-   & $FmPython scripts/assets.py pack --output build/fanmaster-assets.bin
-   & $FmPython scripts/assets.py verify build/fanmaster-assets.bin
-   ```
+```powershell
+& $FmPython scripts/assets.py upload build/fanmaster-assets.bin --port $FmPort
+```
 
-2. Build and flash the uploader:
-
-   ```powershell
-   & $FmPython scripts/build_firmware.py uploader --work-dir build/uploader
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port $FmPort --input-dir build/uploader/build build/uploader/ResourceUploader
-   ```
-
-3. With the uploader running, transfer the resource image:
-
-   ```powershell
-   & $FmPython scripts/assets.py upload build/fanmaster-assets.bin --port $FmPort
-   ```
-
-4. After `DONE verified`, build and flash the application:
-
-   ```powershell
-   & $FmPython scripts/build_firmware.py main --work-dir build/main
-   arduino-cli upload --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc --port $FmPort --input-dir build/main/build build/main/fanmaster
-   ```
+The return to app0 is automatic ten seconds after verification. Later resource
+updates reuse the resident uploader; no application replacement is needed.
+While waiting or after an error, hold uploader button 4 for ten seconds to
+select app0 and restart offline. RESET alone stays in app1 until a successful
+upload or explicit return; this avoids USB-open resets bouncing out of recovery.
 
 ### Transfer results and subsequent updates
 
 The transfer script never guesses a port or flashes ESP32 firmware. It sets
 DTR/RTS low before opening native USB to avoid accidental ROM download mode.
 If the board stays in download mode, release BOOT, press RESET, identify the
-port again and retry. See [host troubleshooting](BUILDING.md#troubleshooting).
+port again and retry. See [host troubleshooting](building.md#troubleshooting).
 
 The uploader erases only the sectors occupied by the new image, checks every
 page by reading it back, and verifies the image CRC. It writes the header last.
@@ -142,17 +136,24 @@ the new index and are never served.
 
 The OLED shows waiting/flash initialization, erase progress, write/readback
 progress in bytes and percent, CRC/header validation, header commit, then
-`Done verified`. An error replaces progress with its cause (for example
+`Done verified` with a ten-second app0 return countdown. An error replaces progress with its cause (for example
 `Serial timeout` or `CRC/header invalid`). Success appears only after final
 header readback passes. Updates use `Config::Oled::REFRESH_INTERVAL_MS` (250 ms),
 with immediate phase changes and completion updates. A missing OLED or failed
 I2C initialization leaves the serial uploader usable; display messages never
 enter the serial protocol.
 
-Application-only updates need just step 4 for your OS. They retain the external
-resource image and existing NVS credentials; do not perform a whole-chip erase.
-Changes to `web/` require the full sequence. Neither webpage needs Internet-hosted
+For an application-only update, build main and use the usual Arduino CLI upload
+for `build/main/fanmaster` with `--input-dir build/main/build`. It writes app0
+and selects it, retaining app1, external assets and NVS. Do not erase the whole
+chip. For changes to `web/`, pack/verify the image, select the resident updater,
+restart manually, and transfer over serial. Neither webpage needs Internet-hosted
 assets. Build/download tools need Internet only when dependencies are missing.
+
+If your Python is older than 3.10 or you already have Arduino's standalone
+esptool, skip the pip install and pass `--esptool "/path/to/esptool"` to the
+installer commands. On Windows the executable is typically named `esptool.exe`.
+The bundled path is host-specific; locate it in the installed ESP32 tool package.
 
 ### Arduino IDE
 
@@ -163,7 +164,7 @@ ESP32S3 Dev Module and the actual port, and enable USB CDC On Boot to match the
 CLI target. Edit original sources in this checkout and stage again after changes.
 For a custom CLI or library location, pass `--arduino-cli "path/to/executable"`
 or `--libraries "path/to/libraries"` to the staging/build script. The optional
-[Apple Silicon ctags workaround](BUILDING.md#apple-silicon-ctags-issue) applies
+[Apple Silicon ctags workaround](building.md#apple-silicon-ctags-issue) applies
 only to affected macOS toolchains.
 
 ## Resource format and serving
@@ -202,7 +203,7 @@ from `[WEB]` network-task gaps. Measure both on the actual board.
 
 ## Provisioning behavior
 
-After restoring the application, use the host's Wi-Fi controls to join
+After returning to app0, use the host's Wi-Fi controls to join
 `Fanmaster-Setup-<random suffix>` if setup is active:
 
 | Host | Wi-Fi controls |
@@ -279,7 +280,7 @@ node tests/test_setup.mjs
 ```
 
 For prerequisites and the Windows/WSL host-test route, see
-[BUILDING.md](BUILDING.md#optional-host-checks). Host tests exercise the resource
+[build environment](building.md#optional-host-checks). Host tests exercise the resource
 packer and serial handshake, Wi-Fi state and
 NVS failures, HTTP routing and streaming, recovery form, and interrupted uploader
 commits using in-memory peripheral substitutes. The JavaScript checks cover
@@ -290,8 +291,9 @@ They do not establish successful SPI or Wi-Fi operation on the ESP32.
 
 The three-point THERMAL widget adds `/assets/thermal.js` to the external image
 (seven resources total). Repack and upload the complete image and rebuild/flash
-the main application using the existing sequence above on each host OS. The
+the main application when its API changes. For resource-only edits, use the
+resident updater sequence above on each host OS. The
 uploader transfer protocol is unchanged. The current uploader also forces the
 fan supply relay off. Update assets and firmware
-together, then reload the panel. See [THERMAL_CONTROL.md](THERMAL_CONTROL.md) for
+together, then reload the panel. See [temperature control](thermal.md) for
 mode restoration, sensor fallback, NVS migration and acceptance checks.

@@ -124,6 +124,13 @@
           </form>
         </div>
       </section>
+      <section class="card maintenance" aria-labelledby="updaterTitle">
+        <div class="section-label">Maintenance</div>
+        <h2 id="updaterTitle">Update web resources</h2>
+        <p class="control-copy">Select the serial resource updater for the next boot, then restart the board manually. After a verified upload, Fanmaster returns automatically in 10 seconds.</p>
+        <button id="selectUpdater" type="button" disabled>Use updater on next boot</button>
+        <p id="updaterState" class="form-message" role="status" aria-live="polite">Reading updater status…</p>
+      </section>
     </main>
 
     <footer>

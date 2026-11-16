@@ -1,6 +1,6 @@
 # Fixed RPM control
 
-Button 3 now switches between manual duty and fixed RPM on release. Buttons 1/2
+Button 3 switches between manual duty and fixed RPM on release. Buttons 1/2
 adjust the active setting; function (button 4) selects fine adjustment. The
 one-second repeat delay and 100 ms repeat cadence also apply to RPM adjustment.
 Function + button 3 still toggles the LED and never switches control mode.
@@ -8,7 +8,7 @@ LED indication continues to use measured TACH RPM, independent of the setpoint.
 
 ## Configuration
 
-All values are in `Config.h`; no wiring changes are needed.
+All values are in `src/fanmaster/Config.h`; no wiring changes are needed.
 
 | Config value | Default | Meaning |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ a valid sample. Choose the ceiling above the actual fan maximum and target
 range. This guards gross pulse-count transients; it is not edge debouncing,
 electrical noise suppression, or detection of every erroneous reading below
 the ceiling. The shared-peripheral power test exposed this need; see the
-THERMAL acceptance section of `HARDWARE_TEST_REPORT.md`.
+THERMAL acceptance section of [validation.md](validation.md).
 
 Only a newly completed TACH sample advances the regulator. Network reads, LED
 updates and OLED refreshes never run extra feedback steps. The raw cached RPM
@@ -77,7 +77,7 @@ add a separate stall-recovery routine.
 Manual duty and target RPM are independent settings. Leaving Duty queues its
 manual setpoint for persistence; leaving RPM queues the target RPM. PI output
 does not change the remembered manual setting. A restart selects Duty but leaves the relay off. The full-duty startup kick
-runs only after explicit key/web power-on; see [POWER_CONTROL.md](POWER_CONTROL.md). Switching to RPM uses the saved
+runs only after explicit key/web power-on; see [fan supply control](power.md). Switching to RPM uses the saved
 target, initially 850 RPM. The last active mode is not persisted.
 
 `OperatingMemory` uses a separate `fanmaster-op` NVS namespace with a versioned
@@ -93,7 +93,7 @@ write NVS. A failed write remains pending for retry. If the network task cannot
 start, local control works but queued changes cannot be saved. Power loss before
 a mode exit or before its queued save completes can lose that latest setting.
 
-## Interfaces and deployment
+## Interfaces
 
 - `POST /api/fan/rpm` with `rpm=850`: validate target, then select RPM mode.
 - `POST /api/fan/duty` with `duty=35`: validate duty, then select manual mode.
@@ -102,10 +102,7 @@ a mode exit or before its queued save completes can lose that latest setting.
 - Serial: `rpm 850`, `mode rpm`, `mode duty`; a plain 0–100 number selects Duty.
 - OLED: measured RPM on the large line; manual mode or RPM target on the duty line.
 
-Rebuild the application and repack/re-upload the external asset image
-for the new Web Panel. See `BUILDING.md` and `FLASH_RESOURCES.md`. The uploader's
-code/protocol is unchanged; an older resource image still offers duty control,
-and submitting duty exits RPM mode.
+See [HTTP API](api.md) for the complete current contract and [resource updates](resources.md) for deployment.
 
 ## Validation boundary
 
@@ -114,7 +111,7 @@ PWM output, sample timing/rollover, noisy first-order plant simulation, slew and
 saturation recovery, serial/API validation, NVS load/save/failure and disabled
 memory. The simulation exercises the algorithm on an illustrative plant; it is
 not measured acceptance of this fan. The fixed-RPM hardware section in
-`HARDWARE_TEST_REPORT.md` separately records the uploaded application/resources,
+[validation.md](validation.md) separately records the uploaded application/resources,
 650/850/1050 RPM step tests, saved settings restored after hardware reset, and
 local-loop behavior during concurrent HTTP requests.
 
@@ -129,4 +126,4 @@ The independent THERMAL widget temporarily suspends fixed control and restores
 its preceding mode/settings on exit. While active, fixed commands are rejected
 and button 3 exits only the override. Curve persistence extends the same NVS
 record while retaining FMO1 preset compatibility. See
-[THERMAL_CONTROL.md](THERMAL_CONTROL.md) for the full contract and deployment.
+[temperature control](thermal.md) for the full contract and deployment.

@@ -80,5 +80,9 @@ struct FakeSerial {
     }
 };
 inline FakeSerial Serial;
-struct FakeESP { uint32_t getFreeHeap() { return 100000; } };
+inline unsigned fakeRestartCount = 0;
+struct FakeESP {
+    uint32_t getFreeHeap() { return 100000; }
+    void restart() { ++fakeRestartCount; }
+};
 inline FakeESP ESP;

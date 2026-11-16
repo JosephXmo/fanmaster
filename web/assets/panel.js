@@ -13,6 +13,9 @@
     el('duty').disabled = el('targetRpm').disabled = el('applyButton').disabled = locked;
     el('applyRpmButton').disabled = locked || !Number.isInteger(state?.min_rpm);
     el('powerToggle').disabled = busy || !state;
+    el('selectUpdater').disabled = busy || !state || (!state.updater_next_boot && !state.updater_available);
+    el('selectUpdater').textContent = state?.updater_next_boot
+      ? 'Cancel updater on next boot' : 'Use updater on next boot';
     listeners.forEach(fn => fn(state, busy));
   }
   function accept(next) {
@@ -21,6 +24,10 @@
         : next.mode === 'thermal' ? 'Fixed controls are paused during THERMAL.' : 'Controller ready. Choose manual duty or fixed RPM.');
     }
     state = next;
+    el('updaterState').textContent = state.updater_next_boot
+      ? 'Updater selected for next boot. Restart the board manually, then upload resources over USB serial.'
+      : state.updater_available ? 'Resident updater ready. Selection does not restart the controller.'
+        : 'Updater unavailable. Install ResourceUploader in app1 first.';
     const speed = Math.max(0, Math.round(Number(state.rpm) || 0));
     el('rpm').textContent = String(speed);
     el('currentDuty').textContent = `${state.duty_percent}%`;
@@ -105,6 +112,16 @@
     } catch (error) {
       el('powerMessage').textContent = error.message;
       el('powerMessage').classList.toggle('error', true);
+    }
+  });
+  el('selectUpdater').addEventListener('click', async () => {
+    if (busy || !state || (!state.updater_next_boot && !state.updater_available)) return;
+    try {
+      await command(state.updater_next_boot ? '/api/updater/cancel' : '/api/updater/select', {});
+      el('updaterState').classList.toggle('error', false);
+    } catch (error) {
+      el('updaterState').textContent = error.message;
+      el('updaterState').classList.toggle('error', true);
     }
   });
   el('duty').addEventListener('input', () => { dutyEdited = true; });
